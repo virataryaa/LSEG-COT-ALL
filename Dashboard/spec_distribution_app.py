@@ -318,6 +318,16 @@ with tab_dist:
         panel_data[(1, i)] = (level_s, color, f"{name} — Level ({unit_label})")
         panel_data[(2, i)] = (chg_s,   color, f"{name} — Weekly Δ ({unit_label})")
 
+    def _latest_date_str(series):
+        # series keeps d's original row index through dropna/diff, so the
+        # last surviving index maps straight back to that row's real Date —
+        # not necessarily d["Date"].max(), since a column can be null on
+        # the very latest report while an earlier column still has data.
+        if series.empty:
+            return None
+        dt = d.loc[series.index[-1], "Date"]
+        return pd.Timestamp(dt).strftime("%d %b %Y")
+
     def _auto_bin(series_list, target_bins=60):
         """Pick a round-ish bin width from the combined range of a row's series."""
         all_vals = pd.concat([s for s in series_list if not s.empty])
@@ -349,7 +359,9 @@ with tab_dist:
         if key not in panel_data or panel_data[key][0].empty:
             return panel_data.get(key, (None, None, ""))[2]
         series, _, base_title = panel_data[key]
-        return f"{base_title}   ·   latest {series.iloc[-1]:,.1f}"
+        date_str = _latest_date_str(series)
+        date_part = f" ({date_str})" if date_str else ""
+        return f"{base_title}   ·   latest{date_part} {series.iloc[-1]:,.1f}"
 
     fig = make_subplots(
         rows=2, cols=3,
@@ -403,7 +415,9 @@ with tab_dist:
             st.info("No overlapping weeks between COT dates and Rollex price data.")
         else:
             px_chg_bin = _auto_bin([px_chg_s])
-            title = f"Weekly Price Change %   ·   latest {px_chg_s.iloc[-1]:+.2f}%"
+            px_latest_date = px_lvl.loc[px_chg_s.index[-1], "Date"]
+            px_date_str = pd.Timestamp(px_latest_date).strftime("%d %b %Y")
+            title = f"Weekly Price Change %   ·   latest ({px_date_str}) {px_chg_s.iloc[-1]:+.2f}%"
 
             fig_px = go.Figure()
             fig_px.add_trace(go.Histogram(
