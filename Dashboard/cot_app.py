@@ -83,13 +83,22 @@ COMM_NAMES = {
     "SB":"SB : Sugar #11","CT":"CT : Cotton #2",
     "RC":"RC : Robusta Coffee","LCC":"LCC : London Cocoa",
     "LSU":"LSU : London White Sugar",
+    "GC":"GC : Gold","SI":"SI : Silver","HG":"HG : Copper",
     "KRC":"KC + RC : Combined Coffee",
     "CLC":"CC + LCC : Combined Cocoa",
     "SLS":"SB + LSU : Combined Sugar",
 }
-CONTRACT_SIZE = {"KC":37500,"CC":10,"SB":112000,"CT":50000,"RC":10,"LCC":10,"LSU":50,"KRC":1,"CLC":1,"SLS":1}
-CONTRACT_UNIT = {"KC":"lbs","CC":"MT","SB":"lbs","CT":"lbs","RC":"MT","LCC":"MT","LSU":"MT","KRC":"lots","CLC":"lots","SLS":"lots"}
-CIT_COMMS     = {"KC","CC","SB","CT"}
+CONTRACT_SIZE = {"KC":37500,"CC":10,"SB":112000,"CT":50000,"RC":10,"LCC":10,"LSU":50,
+                 "GC":100,"SI":5000,"HG":25000,"KRC":1,"CLC":1,"SLS":1}
+CONTRACT_UNIT = {"KC":"lbs","CC":"MT","SB":"lbs","CT":"lbs","RC":"MT","LCC":"MT","LSU":"MT",
+                 "GC":"oz","SI":"oz","HG":"lbs","KRC":"lots","CLC":"lots","SLS":"lots"}
+CIT_COMMS     = {"KC","CC","SB","CT"}  # metals have no CIT/Index Traders category (verified), same as RC/LCC/LSU
+# Commodities whose LSEG price feed is cents/lb (needs /100 for $ nominal) —
+# deliberately NOT the same set as CONTRACT_UNIT=="lbs": Copper (HG) is
+# physically "lbs" too but LSEG quotes HGc2 directly in $/lb already
+# (verified 2026-08-28: HGc2 ~6.59, not ~659 — cents/lb would put copper
+# under 7 cents a pound, which has never happened). Do not add HG here.
+CENTS_QUOTED  = {"KC","SB","CT"}
 COMBINED_COMMS = {"KRC","CLC","SLS"}
 COMBINED_MAP   = {"KRC":("KC","RC"), "CLC":("CC","LCC"), "SLS":("SB","LSU")}
 
@@ -2087,10 +2096,10 @@ def _build_nominal_df(d, commodity, report):
     px   = gc("Px")
 
     # mult: M currency per 1 contract
-    if unit == "lbs":
+    if commodity in CENTS_QUOTED:
         mult = px * size / 100 / 1_000_000   # cents/lb → USD
     else:
-        mult = px * size / 1_000_000          # USD or GBP per MT
+        mult = px * size / 1_000_000          # USD or GBP per MT/oz/lb (already whole-currency)
 
     grp = f"Nominal (M {ccy})"
 
@@ -2426,7 +2435,7 @@ def render_exposure(d, commodity, color):
             net_map[c] = d[c].iloc[-1]
 
     # mult: USD/GBP per 1 contract per unit price (cents/lb → USD needs /100)
-    px_mult = cs / 100 if cu == "lbs" else cs
+    px_mult = cs / 100 if commodity in CENTS_QUOTED else cs
 
     rows = []
     for col, lots in net_map.items():
@@ -4580,7 +4589,7 @@ def render_recap_charts(d, report, color, commodity):
     unit = CONTRACT_UNIT.get(commodity, "MT")
     ccy  = "GBP" if commodity == "LCC" else "USD"
     px   = gc("Px")
-    mult = (px * size / 100 / 1_000_000) if unit == "lbs" else (px * size / 1_000_000)
+    mult = (px * size / 100 / 1_000_000) if commodity in CENTS_QUOTED else (px * size / 1_000_000)
     oi   = gc("Total OI").replace(0, np.nan)
 
     def _line(title, series_dict, clrs=None):

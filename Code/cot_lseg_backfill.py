@@ -6,7 +6,10 @@ LSEG-API replacement for ICEBREAKER/COT_ALL/Code/cot_backfill.py (icepython-base
 Produces the same three parquet files, with the same column names, as the ICE
 pipeline, for the same 7 commodities (KC, CC, SB, CT, RC, LCC, LSU) in both
 Futures+Options-combined and Futures-only flavours, plus the CIT/Supplemental
-report for KC/CC/SB/CT.
+report for KC/CC/SB/CT. Also covers 3 COMEX metals (GC Gold, SI Silver, HG
+Copper — added 2026-08-28), Disaggregated-only like RC/LCC/LSU: metals have
+no CIT/Index Traders category on the CFTC (or on LSEG — verified live),
+since CIT is the ag-only Commodity Index Supplemental report.
 
 Known, confirmed-by-probe gaps vs. the ICE source (left as NaN, not estimated):
   - Per-category trader counts (Traders Comm/Spec/Index/Producer/Swap/MM/Other
@@ -77,6 +80,15 @@ DISAGG_COMMODITIES = {
     "RC":  {"kind": "lif",  "code": "LRC",    "px": "LRCc2"},
     "LCC": {"kind": "lif",  "code": "LCC",    "px": "LCCc2"},
     "LSU": {"kind": "lif",  "code": "LSU",    "px": "LSUc2"},
+    # Metals (COMEX) — verified live 2026-08-28 (OI + Producer/MM category
+    # RICs + price all resolve). No CIT/Index Traders category exists for
+    # these (also verified — 4<code>PLNG returns no data), which is
+    # expected: CIT is CFTC's ag-only Commodity Index Supplemental report.
+    # Same "no CIT" situation RC/LCC/LSU are already in above, so the
+    # dashboard's existing CIT_COMMS gating already handles this cleanly.
+    "GC":  {"kind": "cftc", "code": "088691", "px": "GCc2"},  # Gold
+    "SI":  {"kind": "cftc", "code": "084691", "px": "SIc2"},  # Silver
+    "HG":  {"kind": "cftc", "code": "085692", "px": "HGc2"},  # Copper
 }
 
 FIELD_BY_KIND = {"cftc": "COMM_LAST", "lif": "TRDPRC_1"}
