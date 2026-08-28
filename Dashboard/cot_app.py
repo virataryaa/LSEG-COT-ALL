@@ -4622,15 +4622,19 @@ def render_recap_charts(d, report, color, commodity):
     c10, c11, c12 = st.columns(3)
 
     if report == "CIT":
-        spec_net  = gc("Spec Net")
+        large_net = gc("Spec Net")       # Large Spec only (Spec Long - Spec Short)
+        small_net = gc("Non Rep Net")    # Small Spec / non-reportables only
+        spec_net  = large_net + small_net.fillna(0)  # Net Spec = Large + Small (classic COT convention)
         idx_net   = gc("Index Net")
 
-        # Col 1 — Net positioning
+        # Col 1 — Net positioning. Large/Small shown too (lighter shades) so
+        # it's visible at a glance that Net Spec = Large Net + Small Net.
         with c1:
             st.plotly_chart(_line(
                 "Net Spec & Net Index k lots",
-                {"Net Spec": spec_net / 1000, "Net Index": idx_net / 1000},
-                [C_NET, C_LONG]
+                {"Net Spec": spec_net / 1000, "Net Index": idx_net / 1000,
+                 "Large Net": large_net / 1000, "Small Net": small_net / 1000},
+                [C_NET, C_LONG, "#93c5fd", "#c4b5fd"]
             ), width='stretch')
 
         # Col 2 — Spec gross k lots
