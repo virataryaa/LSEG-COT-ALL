@@ -69,14 +69,16 @@ ROLLEX_MAP  = {
     "LCC":"rollex_LCC.parquet",
     "LSU":"rollex_LSU.parquet",
 }
-VAR_LOT_USD = {"KC":375, "CC":10, "SB":1120, "CT":500, "RC":10, "LCC":10, "LSU":50}
+VAR_LOT_USD = {"KC":375, "CC":10, "SB":1120, "CT":500, "RC":10, "LCC":10, "LSU":50,
+               "GC":100, "SI":5000, "HG":25000}  # = CONTRACT_SIZE, /100 already folded in for CENTS_QUOTED ones
 _CONF_Z     = 2.3263
 
 # ── Commodity config ──────────────────────────────────────────────────────────
 COMM_COLORS = {
     "KC":"#1a56db","CC":"#d97706","SB":"#059669",
     "CT":"#7c3aed","RC":"#dc2626","LCC":"#0891b2",
-    "LSU":"#ea580c","KRC":"#6d28d9","CLC":"#0f766e","SLS":"#a16207",
+    "LSU":"#ea580c","GC":"#ca8a04","SI":"#64748b","HG":"#b45309",
+    "KRC":"#6d28d9","CLC":"#0f766e","SLS":"#a16207",
 }
 COMM_NAMES = {
     "KC":"KC : Arabica Coffee","CC":"CC : NYC Cocoa",
