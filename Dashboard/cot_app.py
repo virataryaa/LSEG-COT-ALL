@@ -4629,18 +4629,26 @@ def render_recap_charts(d, report, color, commodity):
         spec_net  = large_net + small_net.fillna(0)  # Net Spec = Large + Small (classic COT convention)
         idx_net   = gc("Index Net")
 
-        # Col 1 — Net positioning. Large/Small shown too (lighter shades) so
-        # it's visible at a glance that Net Spec = Large Net + Small Net.
+        # Col 1 — Net positioning. Title spells out the composition.
         with c1:
             st.plotly_chart(_line(
-                "Net Spec & Net Index k lots",
-                {"Net Spec": spec_net / 1000, "Net Index": idx_net / 1000,
-                 "Large Net": large_net / 1000, "Small Net": small_net / 1000},
-                [C_NET, C_LONG, "#93c5fd", "#c4b5fd"]
+                "Net Spec (Large + Small) & Net Index k lots",
+                {"Net Spec": spec_net / 1000, "Net Index": idx_net / 1000},
+                [C_NET, C_LONG]
             ), width='stretch')
 
-        # Col 2 — Spec gross k lots
+        # Col 2 — Large Net vs Small Net breakdown, right beside it, so the
+        # "Net Spec = Large + Small" composition is visible at a glance.
         with c2:
+            st.plotly_chart(_line(
+                "Large Net & Small Net k lots",
+                {"Large Net": large_net / 1000, "Small Net": small_net / 1000},
+                ["#93c5fd", "#c4b5fd"]
+            ), width='stretch')
+
+        # Col 9 (was empty in CIT layout) — Spec gross k lots, moved here
+        # to make room for the Large/Small breakdown chart above in c2.
+        with c9:
             st.plotly_chart(_line(
                 "Spec Gross k lots",
                 {"Large Long": gc("Spec Long") / 1000, "Large Short": gc("Spec Short") / 1000},
