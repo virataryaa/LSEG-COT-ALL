@@ -1195,10 +1195,8 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
     # ── 6. Spread Intensity % — Spreading / (Long + Short + Spreading) ──────
     st.markdown(
         "<p style='font-size:.78rem;color:#666;margin:18px 0 4px'>"
-        "<b>Spread Intensity %</b> = Spreading ÷ (Long + Short + Spreading) — how much of "
-        "a category's gross activity sits in offsetting spread positions (relative-value / "
-        "roll trades) vs outright directional bets. Higher = more indecision/hedging; "
-        "lower = stronger directional conviction.</p>", unsafe_allow_html=True)
+        "<b>Spread Intensity %</b> = Spreading ÷ (Long + Short + Spreading)</p>",
+        unsafe_allow_html=True)
 
     def _spread_intensity(legs):
         """legs: list of (long_col, short_col, spread_col) tuples — one for a
