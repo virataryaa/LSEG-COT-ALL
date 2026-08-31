@@ -4664,11 +4664,13 @@ def render_recap_charts(d, report, color, commodity):
                 [C_LONG, C_SHORT]
             ), width='stretch')
 
-        # Col 4 — Spec nominal M USD (gross)
+        # Col 4 — Spec nominal M USD (gross, Large + Small — same Lrg+Sml
+        # convention as the "Spec Gross % of OI" chart beside it)
         with c4:
             st.plotly_chart(_line(
                 f"Spec Nominal M {ccy}",
-                {"Spec Long": gc("Spec Long") * mult, "Spec Short": gc("Spec Short") * mult},
+                {"Lrg+Sml Long":  (gc("Spec Long")  + gc("Non Rep Long").fillna(0))  * mult,
+                 "Lrg+Sml Short": (gc("Spec Short") + gc("Non Rep Short").fillna(0)) * mult},
                 [C_LONG, C_SHORT]
             ), width='stretch')
 
