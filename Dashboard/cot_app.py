@@ -1192,6 +1192,53 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
                [col for _,(col,_) in SPREAD_COLS.items() if col in d.columns],
                "Data table — Spreading")
 
+    # ── 6. Spread Intensity % — Spreading / (Long + Short + Spreading) ──────
+    st.markdown(
+        "<p style='font-size:.78rem;color:#666;margin:18px 0 4px'>"
+        "<b>Spread Intensity %</b> = Spreading ÷ (Long + Short + Spreading) — how much of "
+        "a category's gross activity sits in offsetting spread positions (relative-value / "
+        "roll trades) vs outright directional bets. Higher = more indecision/hedging; "
+        "lower = stronger directional conviction.</p>", unsafe_allow_html=True)
+
+    def _spread_intensity(legs):
+        """legs: list of (long_col, short_col, spread_col) tuples — one for a
+        single category, several summed together for the combined view."""
+        long_s   = sum(d[lc].astype(float)  for lc, _, _   in legs if lc  in d.columns)
+        short_s  = sum(d[sc].astype(float)  for _, sc, _   in legs if sc  in d.columns)
+        spread_s = sum(d[spc].astype(float) for _, _, spc  in legs if spc in d.columns)
+        denom = (long_s + short_s + spread_s)
+        denom = denom.replace(0, np.nan) if hasattr(denom, "replace") else denom
+        return spread_s / denom * 100
+
+    si_cat_legs = {lbl: (f"{col.replace(' Spread', '')} Long",
+                         f"{col.replace(' Spread', '')} Short", col)
+                   for lbl, col, _ in avail}
+    si_opts = list(si_cat_legs.keys()) + (["Combined (All)"] if len(si_cat_legs) > 1 else [])
+    si_colors = {lbl: clr for lbl, _, clr in avail}
+    si_colors["Combined (All)"] = "#111827"
+    si_sel = st.multiselect("Category", si_opts, default=si_opts, key="spread_intensity_cats")
+
+    if si_sel:
+        fig_si = go.Figure()
+        for lbl in si_sel:
+            legs = list(si_cat_legs.values()) if lbl == "Combined (All)" else [si_cat_legs[lbl]]
+            y = _spread_intensity(legs)
+            fig_si.add_trace(go.Scatter(
+                x=d["Date"], y=y, name=lbl,
+                line=dict(color=si_colors.get(lbl, "#888"),
+                          width=2.4 if lbl == "Combined (All)" else 1.8,
+                          dash="dash" if lbl == "Combined (All)" else "solid"),
+                hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{lbl}: %{{y:.1f}}%<extra></extra>"))
+        fig_si.update_layout(
+            **_BASE, height=360,
+            title=dict(text="Spread Intensity %  ·  Spreading ÷ (Long + Short + Spreading)",
+                       font=dict(size=12, color="#374151"), x=0),
+            margin=dict(l=50, r=20, t=42, b=50),
+            legend=dict(orientation="h", y=-0.2, font=dict(size=9)),
+            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+            yaxis=dict(**_ax(), title_text="%", title_font_size=10))
+        st.plotly_chart(fig_si, width='stretch')
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — OLD / NEW CROP (Disagg only)
