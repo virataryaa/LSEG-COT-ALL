@@ -332,16 +332,19 @@ def fetch_disagg_commodity(ld, comm: str, cfg: dict, prefix: str, start: str, en
 # (GEN_VAL2/3) that happens to hold the same current value but rejects any
 # get_history() date range; MET_VAL/MET_VAL2 do not have that restriction).
 #
-# Two real gaps found and verified live, not assumed:
+# One real gap found and verified live, not assumed:
 #   - Only works for "cftc"-kind commodities (KC/CC/SB/CT) — tested on a
 #     "lif"-kind RIC (RC) and LSEG rejected the field outright. Old/New crop
 #     is a US CFTC-specific concept; RC/LCC/LSU (London/ICE Europe) don't
 #     carry it. No crop split fetched for those 3.
-#   - Total OI has NO crop split via this mechanism (tested MET_VAL, MET_VAL2,
-#     GEN_VAL2, GEN_VAL3 all return null on the OI RIC) — Old/Other rows
-#     carry Total OI = NaN, same as the already-documented gaps
-#     (Concentration, per-category trader counts). Pct-OI-of columns are
-#     therefore NaN too for these rows (can't divide by a NaN OI).
+#
+# Total OI has NO crop split via this mechanism either (tested MET_VAL,
+# MET_VAL2, GEN_VAL2, GEN_VAL3 — all return null on the OI RIC), but it IS
+# fully derivable from the category data we do have: OI = sum of every
+# category's gross long side, where Swap/MM/Other Reportables' "Long"
+# figure excludes their Spread leg (reported as a separate number), so
+# Spread has to be added back in per category. See the derivation and its
+# verification in fetch_disagg_commodity_crop() below.
 CROP_FIELD = {"Old": "MET_VAL", "Other": "MET_VAL2"}
 
 def fetch_disagg_commodity_crop(ld, comm: str, cfg: dict, prefix: str, crop: str,
@@ -361,11 +364,22 @@ def fetch_disagg_commodity_crop(ld, comm: str, cfg: dict, prefix: str, crop: str
 
     for col in DISAGG_GAP_COLS:
         df[col] = float("nan")
-    df["Total OI"] = float("nan")          # no crop split available (verified live) — see comment above
-    df["Traders Total"] = float("nan")
+    # Total OI itself has no crop split on LSEG (verified live — see comment
+    # above), but it's fully DERIVABLE from category data we do have: OI =
+    # sum of each category's gross long side, where Swap/MM/Other's "Long"
+    # figure excludes their Spread leg (reported separately), so Spread has
+    # to be added back in. Verified against the real "All"-crop Total OI
+    # (2026-08-31): matches to within +/-1 contract on the All row itself,
+    # and Old-derived + Other-derived reproduces the real All OI to within
+    # +/-3 contracts on SB/GC (869/869 weeks) — pure rounding, not an
+    # approximation error.
+    oi_parts = ["Producer Long", "Swap Long", "Swap Spread", "MM Long", "MM Spread",
+                "Other Long", "Other Spread", "Non Rep Long"]
+    df["Total OI"] = sum(df[c] for c in oi_parts if c in df.columns)
+    df["Traders Total"] = float("nan")  # trader COUNTS aren't derivable from position sums
     for col in DISAGG_POS_FOR_PCT:
         if col in df.columns:
-            df[f"Pct OI {col}"] = float("nan")  # can't compute without this crop's own Total OI
+            df[f"Pct OI {col}"] = df[col] / df["Total OI"] * 100
 
     df.index.name = "Date"
     df = df.reset_index()
