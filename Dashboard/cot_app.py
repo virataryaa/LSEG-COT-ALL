@@ -1419,7 +1419,13 @@ def render_old_new(d_crops, color, commodity=""):
     if old.empty and other.empty:
         st.info("No Old/Other crop data in selected range."); return
 
-    other_check = d_crops[d_crops["Crop"]=="Other"]["Total OI"].dropna()
+    # Gate on a category column that's actually populated for Old/Other rows
+    # (MM Long, charted right below), not Total OI — Total OI has no crop
+    # split available from LSEG at all (a documented, permanent gap) and is
+    # always NaN on these rows, so gating on it wrongly blocked this whole
+    # tab even for commodities (KC/CC/SB/CT/GC/SI/HG) that DO have real
+    # Old/Other category data.
+    other_check = d_crops[d_crops["Crop"]=="Other"]["MM Long"].dropna()
     if other_check.empty:
         st.info("Old/New crop split not available for this commodity."); return
 
