@@ -101,6 +101,12 @@ def run_disagg(ld, prefix: str, path: Path, today: str):
             frames.append(backfill.fetch_disagg_commodity(ld, comm, cfg, prefix, start, today))
         except Exception as e:
             log.error("  ERROR fetching Disagg-%s %s: %s", label, comm, e)
+        for crop in ("Old", "Other"):
+            try:
+                frames.append(backfill.fetch_disagg_commodity_crop(ld, comm, cfg, prefix, crop, start, today))
+            except Exception as e:
+                log.error("  ERROR fetching Disagg-%s-%s %s: %s", label, crop, comm, e)
+    frames = [f for f in frames if f is not None and not f.empty]
     new_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     if path.exists() and not new_df.empty:
@@ -142,6 +148,10 @@ def main():
             for prefix, path in (("3", backfill.DISAGG_FUTOPT_FILE), ("1", backfill.DISAGG_FUT_FILE)):
                 frames = [backfill.fetch_disagg_commodity(ld, c, cfg, prefix, start, today)
                           for c, cfg in backfill.DISAGG_COMMODITIES.items()]
+                for c, cfg in backfill.DISAGG_COMMODITIES.items():
+                    for crop in ("Old", "Other"):
+                        frames.append(backfill.fetch_disagg_commodity_crop(ld, c, cfg, prefix, crop, start, today))
+                frames = [f for f in frames if f is not None and not f.empty]
                 pd.concat(frames, ignore_index=True).sort_values(["Commodity", "Date"]) \
                     .reset_index(drop=True).to_parquet(path, engine="pyarrow", index=False)
         else:

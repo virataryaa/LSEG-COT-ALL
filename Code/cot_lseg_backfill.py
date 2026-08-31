@@ -317,6 +317,68 @@ def fetch_disagg_commodity(ld, comm: str, cfg: dict, prefix: str, start: str, en
     return df[DISAGG_FINAL_COLS]
 
 
+# ── Old/New(Other) crop split ────────────────────────────────────────────────
+# Discovered live 2026-08-31: the standard Disagg category RICs (e.g.
+# 3033661PLNG = Cotton COMB Producer Long) carry two companion fields beyond
+# the usual COMM_LAST ("All" crop, what fetch_disagg_commodity() above pulls):
+# MET_VAL = "Old" crop row, MET_VAL2 = "Other" crop row (CFTC's own report
+# labels the non-old row "Other", not "New"). Verified byte-for-byte against
+# the official CFTC report text (Cotton COMB, 2026-08-25 — All/Old/Other
+# rows for Producer/Swap/MM/Other Reportables/Non-Rep Long+Short all matched
+# exactly) and confirmed both fields support full get_history() backfill
+# back to 2010-01-05 (869 daily rows) — this is a genuine LSEG historical
+# archive, not a live-only snapshot (an earlier probe wrongly concluded no
+# crop history existed at all, based on a different, live-only field
+# (GEN_VAL2/3) that happens to hold the same current value but rejects any
+# get_history() date range; MET_VAL/MET_VAL2 do not have that restriction).
+#
+# Two real gaps found and verified live, not assumed:
+#   - Only works for "cftc"-kind commodities (KC/CC/SB/CT) — tested on a
+#     "lif"-kind RIC (RC) and LSEG rejected the field outright. Old/New crop
+#     is a US CFTC-specific concept; RC/LCC/LSU (London/ICE Europe) don't
+#     carry it. No crop split fetched for those 3.
+#   - Total OI has NO crop split via this mechanism (tested MET_VAL, MET_VAL2,
+#     GEN_VAL2, GEN_VAL3 all return null on the OI RIC) — Old/Other rows
+#     carry Total OI = NaN, same as the already-documented gaps
+#     (Concentration, per-category trader counts). Pct-OI-of columns are
+#     therefore NaN too for these rows (can't divide by a NaN OI).
+CROP_FIELD = {"Old": "MET_VAL", "Other": "MET_VAL2"}
+
+def fetch_disagg_commodity_crop(ld, comm: str, cfg: dict, prefix: str, crop: str,
+                                start: str, end: str) -> pd.DataFrame:
+    kind, code = cfg["kind"], cfg["code"]
+    if kind != "cftc":
+        return pd.DataFrame()  # crop split not available for lif-kind (RC/LCC/LSU) — verified live
+
+    root = f"{prefix}{code}"
+    field = CROP_FIELD[crop]
+    ric_to_col = {f"{root}{suffix}": col for col, suffix in DISAGG_CATS.items()}
+    log.info("  [Disagg-%s-%s] %s — %d category RICs (field=%s)",
+             "COMB" if prefix == "3" else "FUT", crop, comm, len(ric_to_col), field)
+    df = _batch_history(ld, ric_to_col, field, start, end)
+    if df.empty:
+        return pd.DataFrame()
+
+    for col in DISAGG_GAP_COLS:
+        df[col] = float("nan")
+    df["Total OI"] = float("nan")          # no crop split available (verified live) — see comment above
+    df["Traders Total"] = float("nan")
+    for col in DISAGG_POS_FOR_PCT:
+        if col in df.columns:
+            df[f"Pct OI {col}"] = float("nan")  # can't compute without this crop's own Total OI
+
+    df.index.name = "Date"
+    df = df.reset_index()
+    df.insert(0, "Crop", crop)
+    df.insert(0, "Commodity", comm)
+    df = df.dropna(subset=[c for c in DISAGG_POS_FOR_PCT if c in df.columns], how="all")
+    for col in DISAGG_FINAL_COLS:
+        if col not in df.columns:
+            df[col] = float("nan")
+    log.info("  [Disagg-%s-%s] %s -> %d rows", "COMB" if prefix == "3" else "FUT", crop, comm, len(df))
+    return df[DISAGG_FINAL_COLS]
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════════
@@ -356,6 +418,12 @@ def main():
                 futopt_frames.append(fetch_disagg_commodity(ld, comm, cfg, "3", args.start, today))
             except Exception as e:
                 log.error("  ERROR fetching Disagg-COMB %s: %s", comm, e)
+            for crop in ("Old", "Other"):
+                try:
+                    futopt_frames.append(fetch_disagg_commodity_crop(ld, comm, cfg, "3", crop, args.start, today))
+                except Exception as e:
+                    log.error("  ERROR fetching Disagg-COMB-%s %s: %s", crop, comm, e)
+        futopt_frames = [f for f in futopt_frames if f is not None and not f.empty]
         futopt_df = pd.concat(futopt_frames, ignore_index=True).sort_values(["Commodity", "Date"]).reset_index(drop=True)
         futopt_df.to_parquet(DISAGG_FUTOPT_FILE, engine="pyarrow", index=False)
         log.info("Disagg FutOpt saved -> %s | %d rows", DISAGG_FUTOPT_FILE, len(futopt_df))
@@ -368,6 +436,12 @@ def main():
                 fut_frames.append(fetch_disagg_commodity(ld, comm, cfg, "1", args.start, today))
             except Exception as e:
                 log.error("  ERROR fetching Disagg-FUT %s: %s", comm, e)
+            for crop in ("Old", "Other"):
+                try:
+                    fut_frames.append(fetch_disagg_commodity_crop(ld, comm, cfg, "1", crop, args.start, today))
+                except Exception as e:
+                    log.error("  ERROR fetching Disagg-FUT-%s %s: %s", crop, comm, e)
+        fut_frames = [f for f in fut_frames if f is not None and not f.empty]
         fut_df = pd.concat(fut_frames, ignore_index=True).sort_values(["Commodity", "Date"]).reset_index(drop=True)
         fut_df.to_parquet(DISAGG_FUT_FILE, engine="pyarrow", index=False)
         log.info("Disagg Fut saved -> %s | %d rows", DISAGG_FUT_FILE, len(fut_df))
