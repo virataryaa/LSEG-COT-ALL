@@ -1224,8 +1224,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
             fig_si.add_trace(go.Scatter(
                 x=d["Date"], y=y, name=lbl,
                 line=dict(color=si_colors.get(lbl, "#888"),
-                          width=2.4 if lbl == "Combined (All)" else 1.8,
-                          dash="dash" if lbl == "Combined (All)" else "solid"),
+                          width=2.4 if lbl == "Combined (All)" else 1.8),
                 hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{lbl}: %{{y:.1f}}%<extra></extra>"))
         fig_si.update_layout(
             **_BASE, height=360,
