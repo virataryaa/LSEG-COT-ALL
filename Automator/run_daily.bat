@@ -7,8 +7,8 @@
 :: those two source projects update daily on their own schedules.
 set PYTHONIOENCODING=utf-8
 set PYTHON=C:\Users\virat.arya\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe
-set LOG=C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL\Automator\run_daily_log.txt
-set REPO=C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL
+set LOG=C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Automator\run_daily_log.txt
+set REPO=C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL
 set GIT_STATUS=skipped
 
 :: Prevent Git Credential Manager from showing an interactive dialog in unattended runs.
@@ -22,12 +22,12 @@ echo ============================= >> "%LOG%"
 
 :: Step 1 — Sync Rollex parquets from the Rollex (LSEG) master database
 echo [1] Syncing Rollex parquets... >> "%LOG%"
-xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\Rollex\Database\rollex_*.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL\Database\Rollex\" >> "%LOG%" 2>&1
+xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\Rollex\Database\rollex_*.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database\Rollex\" >> "%LOG%" 2>&1
 if %ERRORLEVEL% NEQ 0 echo WARNING: Rollex sync had issues >> "%LOG%"
 
 :: Step 2 — Sync Roll Yield parquet from the Roll Yield (LSEG) master database
 echo [2] Syncing Roll Yield parquet... >> "%LOG%"
-xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\Roll Yield\Database\roll_yield_data.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL\Database\RollYield\" >> "%LOG%" 2>&1
+xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\Roll Yield\Database\roll_yield_data.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database\RollYield\" >> "%LOG%" 2>&1
 if %ERRORLEVEL% NEQ 0 echo WARNING: Roll Yield sync had issues >> "%LOG%"
 
 :: Step 3 — Push updated parquets to GitHub
@@ -53,6 +53,6 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: Step 4 — Email notification (daily mode — Rollex/RollYield-focused body)
 echo [4] Sending notification... >> "%LOG%"
-"%PYTHON%" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL\Automator\notify.py" ok %GIT_STATUS% daily >> "%LOG%" 2>&1
+"%PYTHON%" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Automator\notify.py" ok %GIT_STATUS% daily >> "%LOG%" 2>&1
 
 echo Daily run finished: %date% %time% >> "%LOG%"

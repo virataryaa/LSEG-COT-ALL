@@ -7,7 +7,7 @@ Usage: python notify.py <status> <git_status> [mode]
   mode       : weekly (default) | daily
 
 Adapted from ICEBREAKER/COT_ALL/Automator/notify.py — same logic, repointed
-at the Interim_Migration folder.
+at the LSEG folder.
 """
 
 import sys
@@ -16,8 +16,8 @@ import pandas as pd
 from pathlib import Path
 
 TO_EMAIL      = "virat.arya@etgworld.com"
-DB_DIR        = Path(r"C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL\Database")
-AUTOMATOR_DIR = Path(r"C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\Interim_Migration\COT_ALL\Automator")
+DB_DIR        = Path(r"C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database")
+AUTOMATOR_DIR = Path(r"C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Automator")
 ROLLEX_DIR    = DB_DIR / "Rollex"
 ROLLYIELD_DIR = DB_DIR / "RollYield"
 
@@ -116,7 +116,7 @@ if mode == "daily":
     tag = "[ERROR]" if not ok else ("[WARN-PUSH]" if git_status == "failed" else "[DAILY]")
     subject = f"{tag} COT_ALL (LSEG) Rollex/RollYield Daily Sync — {today}"
 
-    body = f"""Interim_Migration COT_ALL (LSEG) — DAILY ROLLEX/ROLLYIELD SYNC
+    body = f"""LSEG COT_ALL (LSEG) — DAILY ROLLEX/ROLLYIELD SYNC
 Run time : {run_dt}
 Status   : {"OK" if ok else "ERROR — check run_daily_log.txt"}
 {git_line}
@@ -129,7 +129,7 @@ SYNCED FILES (Rollex + Roll Yield)
 Note: This is the DAILY sync (xcopy only). COT parquets are NOT touched here —
 those refresh weekly via run.bat on Fridays after CFTC release.
 
-Log: C:\\Users\\virat.arya\\ETG\\SoftsDatabase - Documents\\Database\\Hardmine\\Interim_Migration\\COT_ALL\\Automator\\run_daily_log.txt
+Log: C:\\Users\\virat.arya\\ETG\\SoftsDatabase - Documents\\Database\\Hardmine\\LSEG\\COT_ALL\\Automator\\run_daily_log.txt
 """
 
 else:
@@ -142,14 +142,14 @@ else:
     has_warnings = bool(stale_warnings)
 
     tag = "[ERROR]" if not ok else ("[WARNING]" if has_warnings else "[OK]")
-    subject = f"{tag} Interim_Migration-COT_ALL (LSEG) Weekly — {today}"
+    subject = f"{tag} LSEG-COT_ALL (LSEG) Weekly — {today}"
 
     warnings_block = ""
     if stale_warnings:
         lines = ["=" * 55, "WARNINGS", "=" * 55, "  Stale data detected:"] + stale_warnings
         warnings_block = "\n".join(lines) + "\n\n"
 
-    body = f"""Interim_Migration COT_ALL (LSEG) — WEEKLY COT UPDATE
+    body = f"""LSEG COT_ALL (LSEG) — WEEKLY COT UPDATE
 Run time : {run_dt}
 Status   : {"OK" if ok else "ERROR — ingest failed, check run_log.txt"}
 {git_line}
@@ -167,7 +167,7 @@ per-category trader counts, no concentration (Conc Gross/Net 4/8). Rollex
 and Roll Yield ARE synced — Rollex + Roll Yield weekly here, and daily via
 the separate run_daily.bat.
 
-Log: C:\\Users\\virat.arya\\ETG\\SoftsDatabase - Documents\\Database\\Hardmine\\Interim_Migration\\COT_ALL\\Automator\\run_log.txt
+Log: C:\\Users\\virat.arya\\ETG\\SoftsDatabase - Documents\\Database\\Hardmine\\LSEG\\COT_ALL\\Automator\\run_log.txt
 """
 
 print(body)

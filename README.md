@@ -11,7 +11,7 @@ ICE API access is unavailable.
   maps and fetch logic — no duplication).
 - **`Database/`** — `cot_cit.parquet`, `cot_disagg_futopt.parquet`,
   `cot_disagg_fut.parquet`, plus `Database/Rollex/` (synced from the sibling
-  `Interim_Migration/Rollex` project). Covers 7 softs (KC/CC/SB/CT/RC/LCC/
+  `LSEG/Rollex` project). Covers 7 softs (KC/CC/SB/CT/RC/LCC/
   LSU) + 3 COMEX metals (GC/SI/HG, added 2026-08-28). Metals are
   Disaggregated-only (`cot_disagg_*.parquet`) — no CIT rows, since CIT is
   CFTC's ag-only Commodity Index Supplemental report (same situation
