@@ -1,5 +1,5 @@
 @echo off
-:: WEEKLY — COT ingest (LSEG) + Rollex sync + Roll Yield sync + git push + email
+:: WEEKLY - COT ingest (LSEG) + Rollex sync + Roll Yield sync + git push + email
 :: Schedule: Friday, after CFTC release
 :: Adapted from ICEBREAKER/COT_ALL/Automator/run.bat. Rollex and Roll Yield
 :: are both now built (see the sibling LSEG/Rollex and
@@ -19,7 +19,7 @@ echo ============================= >> "%LOG%"
 echo Run started: %date% %time% >> "%LOG%"
 echo ============================= >> "%LOG%"
 
-:: Step 1 — Incremental COT ingest (LSEG, all 7 commodities)
+:: Step 1 - Incremental COT ingest (LSEG, all 7 commodities)
 echo [1] Running cot_lseg_ingest.py... >> "%LOG%"
 "%PYTHON%" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Code\cot_lseg_ingest.py" >> "%LOG%" 2>&1
 
@@ -29,17 +29,17 @@ if %ERRORLEVEL% NEQ 0 (
     goto notify
 )
 
-:: Step 1b — Sync Rollex parquets from the Rollex (LSEG) master database
+:: Step 1b - Sync Rollex parquets from the Rollex (LSEG) master database
 echo [1b] Syncing Rollex parquets... >> "%LOG%"
 xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\Rollex\Database\rollex_*.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database\Rollex\" >> "%LOG%" 2>&1
 if %ERRORLEVEL% NEQ 0 echo WARNING: Rollex sync had issues >> "%LOG%"
 
-:: Step 1c — Sync Roll Yield parquet from the Roll Yield (LSEG) master database
+:: Step 1c - Sync Roll Yield parquet from the Roll Yield (LSEG) master database
 echo [1c] Syncing Roll Yield parquet... >> "%LOG%"
 xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\Roll Yield\Database\roll_yield_data.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database\RollYield\" >> "%LOG%" 2>&1
 if %ERRORLEVEL% NEQ 0 echo WARNING: Roll Yield sync had issues >> "%LOG%"
 
-:: Step 2 — Push updated parquets to GitHub
+:: Step 2 - Push updated parquets to GitHub
 echo [2] Pushing to GitHub... >> "%LOG%"
 cd /d "%REPO%"
 if %ERRORLEVEL% NEQ 0 (
