@@ -6111,6 +6111,207 @@ def _na(msg):
         unsafe_allow_html=True)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION — DISTRIBUTION (ported from spec_distribution_app.py)
+# Uses the full history of the sidebar commodity/report/version — the sidebar
+# date range is deliberately ignored; each view has its own lookback control.
+# ══════════════════════════════════════════════════════════════════════════════
+DIST_LOOKBACKS = [1, 3, 5, 10]
+DIST_CIT_CATS = {k: v for k, v in CIT_SPEC.items()} | {
+    "Commercial": {"long": "Comm Long", "short": "Comm Short", "net": "Comm Net"},
+}
+DIST_DISAGG_CATS = {k: v for k, v in DISAGG_SPEC.items()} | {
+    "MM + Non-Rep":          {"long": "MM+NonRep Long", "short": "MM+NonRep Short", "net": "MM+NonRep Net"},
+    "Commercial (Producer)": {"long": "Producer Long",  "short": "Producer Short",  "net": "Comm Net"},
+}
+DIST_MATRIX_COMMS = [c for c in COMM_NAMES if c not in COMBINED_COMMS]
+
+def _dist_prepare(d):
+    """Add the MM + Non-Rep columns (not built by load_disagg) incl. their % of OI."""
+    d = d.copy()
+    if {"MM Long", "Non Rep Long"} <= set(d.columns):
+        for side in ("Long", "Short"):
+            d[f"MM+NonRep {side}"] = d[f"MM {side}"] + d[f"Non Rep {side}"]
+        d["MM+NonRep Net"] = d["MM+NonRep Long"] - d["MM+NonRep Short"]
+        if "Total OI" in d.columns:
+            for c in ("MM+NonRep Long", "MM+NonRep Short", "MM+NonRep Net"):
+                d[f"Pct OI {c}"] = (d[c] / d["Total OI"] * 100).round(2)
+    return d
+
+def _dist_zscore(series, years):
+    if series.empty:
+        return np.nan
+    window = series[series.index >= series.index.max() - pd.DateOffset(years=years)]
+    sd = window.std(ddof=0)
+    if len(window) < 5 or pd.isna(sd) or sd == 0:
+        return np.nan
+    return float((series.iloc[-1] - window.mean()) / sd)
+
+def _dist_style_z(v):
+    if pd.isna(v):
+        return ""
+    v = max(-3, min(3, v))
+    if v >= 0:
+        r, g, b = 255 - int(v/3*105), 235 - int(v/3*20), 130
+    else:
+        r, g, b = 250, 150 + int((v+3)/3*85), 120 + int((v+3)/3*60)
+    return f"background-color:rgb({r},{g},{b});color:#1a1a2e"
+
+def _dist_auto_bin(series_list, target_bins=60):
+    """Round-ish bin width from the combined range of the given series."""
+    vals = pd.concat([s for s in series_list if not s.empty]) if series_list else pd.Series(dtype=float)
+    if vals.empty:
+        return 1.0
+    span = vals.max() - vals.min()
+    raw_w = span / target_bins if span > 0 else 1.0
+    mag = 10 ** np.floor(np.log10(raw_w))
+    for m in (1, 2, 2.5, 5, 10):
+        if raw_w <= m * mag:
+            return round(m * mag, 6)
+    return round(10 * mag, 6)
+
+_DIST_FONT = dict(family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif", size=11)
+
+@st.fragment
+def render_distribution(full, commodity, report):
+    if report == "Disagg" and version_key == "Opt":
+        _na("Distribution is available for CIT, Disagg F&O and Disagg Futures — not Options only.")
+        return
+    cat_map = DIST_CIT_CATS if report == "CIT" else DIST_DISAGG_CATS
+    c1, c2, c3, c4 = st.columns([1.8, 1.2, 2.6, 1.5])
+    with c1:
+        category = st.selectbox("Category", list(cat_map), key=f"dist_cat_{report}")
+    with c2:
+        unit = st.radio("Units", ["k lots", "% of OI"], horizontal=True, key="dist_unit")
+    with c3:
+        lb_choice = st.radio("History window", ["All", "1y", "3y", "5y", "10y"],
+                             horizontal=True, key="dist_lookback")
+    with c4:
+        y_mode = st.radio("Y-axis", ["% of weeks", "Count"], horizontal=True, key="dist_ymode")
+
+    cols = cat_map[category]
+    d = _dist_prepare(full)
+    if d.empty or any(c not in d.columns for c in (cols["net"], cols["long"], cols["short"])):
+        st.warning(f"No data available for {commodity} / {report} / {category}.")
+        return
+    if lb_choice != "All":
+        d = d[d["Date"] >= d["Date"].max() - pd.DateOffset(years=int(lb_choice[:-1]))]
+    st.caption(f"Study period: **{d['Date'].min():%d %b %Y} → {d['Date'].max():%d %b %Y}** "
+               f"({len(d)} weekly observations) · full history, independent of the sidebar date range")
+
+    use_pct    = unit == "% of OI"
+    unit_div   = 1.0 if use_pct else 1000.0
+    hist_norm  = "percent" if y_mode == "% of weeks" else None
+    y_title    = "% of weeks" if hist_norm else "Weeks (count)"
+
+    panels = {}   # (row, col) -> (series, colour, title)
+    for i, (name, base, clr) in enumerate([("Net", cols["net"], C_NET),
+                                           ("Long", cols["long"], C_LONG),
+                                           ("Short", cols["short"], C_SHORT)], start=1):
+        col = f"Pct OI {base}" if use_pct else base
+        if col not in d.columns:
+            continue
+        lvl = pd.to_numeric(d[col], errors="coerce").dropna() / unit_div
+        panels[(1, i)] = (lvl, clr, f"{name} — Level ({unit})")
+        panels[(2, i)] = (lvl.diff().dropna(), clr, f"{name} — Weekly Δ ({unit})")
+
+    bins = {1: 0.5, 2: 0.5} if use_pct else {
+        r: _dist_auto_bin([s for (rr, _), (s, _, _) in panels.items() if rr == r]) for r in (1, 2)}
+
+    def _title(key):
+        if key not in panels:
+            return ""
+        s, _, base_title = panels[key]
+        if s.empty:
+            return base_title
+        return f"{base_title}   ·   latest ({d.loc[s.index[-1], 'Date']:%d %b %Y}) {s.iloc[-1]:,.1f}"
+
+    fig = make_subplots(rows=2, cols=3, vertical_spacing=0.22, horizontal_spacing=0.07,
+                        subplot_titles=[_title((r, c)) for r in (1, 2) for c in (1, 2, 3)])
+    for ann in fig.layout.annotations:
+        ann.font.size = 12
+    for (r, c), (s, clr, _) in panels.items():
+        if s.empty:
+            continue
+        fig.add_trace(go.Histogram(x=s.values, xbins=dict(size=bins[r]), marker_color=clr,
+                                   marker_line=dict(color="white", width=1), histnorm=hist_norm,
+                                   opacity=0.85, showlegend=False), row=r, col=c)
+        fig.add_vline(x=s.iloc[-1], line_dash="dash", line_color="#1a1a2e", line_width=2, row=r, col=c)
+    fig.update_layout(height=700, template="plotly_white", bargap=0.04,
+                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fafafa",
+                      margin=dict(l=30, r=30, t=70, b=40), font=_DIST_FONT)
+    fig.update_yaxes(title_text=y_title, title_font_size=10, showgrid=True, gridcolor="rgba(0,0,0,0.06)")
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, width='stretch')
+    st.caption(f"Distribution of {category} Net/Long/Short — level and week-over-week change — over the "
+               f"selected window. Dashed line marks the latest data point ({d['Date'].max():%d %b %Y}).")
+
+    # Rollex weekly % change on the same COT dates
+    st.divider()
+    st.markdown("**Rollex Price Weekly % Change**")
+    rx = load_rollex(commodity)
+    if rx.empty:
+        st.info("Rollex price data not available for this commodity.")
+        return
+    px_lvl = d[["Date"]].merge(rx[["Date", "rollex_px"]], on="Date", how="inner").sort_values("Date").reset_index(drop=True)
+    chg = (px_lvl["rollex_px"].dropna().pct_change() * 100).dropna()
+    if chg.empty:
+        st.info("No overlapping weeks between COT dates and Rollex price data.")
+        return
+    fig_px = go.Figure(go.Histogram(x=chg.values, xbins=dict(size=_dist_auto_bin([chg])),
+                                    marker_color="#f59e0b", marker_line=dict(color="white", width=1),
+                                    histnorm=hist_norm, opacity=0.85, showlegend=False))
+    fig_px.add_vline(x=chg.iloc[-1], line_color="#1a1a2e", line_width=2)
+    fig_px.update_layout(
+        title=dict(text=f"Weekly Price Change %   ·   latest ({px_lvl.loc[chg.index[-1], 'Date']:%d %b %Y}) "
+                        f"{chg.iloc[-1]:+.2f}%", font=dict(size=13)),
+        height=340, template="plotly_white", bargap=0.04, paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#fafafa", margin=dict(l=30, r=30, t=50, b=40), font=_DIST_FONT)
+    fig_px.update_yaxes(title_text=y_title, title_font_size=10, showgrid=True, gridcolor="rgba(0,0,0,0.06)")
+    fig_px.update_xaxes(title_text="Weekly Price Change %", showgrid=False)
+    px_col, _ = st.columns(2)
+    with px_col:
+        st.plotly_chart(fig_px, width='stretch')
+    st.caption("Distribution of the Rollex (roll-adjusted) price's week-over-week % change over the same "
+               "study window as the positioning histograms. Solid line marks the latest value.")
+
+@st.fragment
+def render_zscore_matrix():
+    fut = _dist_prepare(load_disagg("Fut"))
+    fut = fut[fut["Crop"] == "All"]
+    st.caption("All single commodities on the Disaggregated **Futures-only** report, so RC/LCC/LSU "
+               "(no CIT) sit on the same basis as KC/CC/SB/CT. Independent of the sidebar filters. "
+               f"Latest COT date: **{fut['Date'].max():%d %b %Y}**.")
+    category = st.selectbox("Category (matrix)", list(DIST_DISAGG_CATS), key="dist_matrix_cat")
+    net_col = DIST_DISAGG_CATS[category]["net"]
+
+    level_rows, chg_rows = {}, {}
+    for cmm in DIST_MATRIX_COMMS:
+        dc = fut[fut["Commodity"] == cmm].sort_values("Date")
+        if dc.empty or net_col not in dc.columns:
+            continue
+        lvl = pd.to_numeric(dc.set_index("Date")[net_col], errors="coerce").dropna()
+        name = COMM_NAMES[cmm].split(" : ")[1]
+        level_rows[name] = {y: _dist_zscore(lvl, y) for y in DIST_LOOKBACKS}
+        chg_rows[name]   = {y: _dist_zscore(lvl.diff().dropna(), y) for y in DIST_LOOKBACKS}
+    level_df = pd.DataFrame(level_rows).T.reindex(columns=DIST_LOOKBACKS)
+    chg_df   = pd.DataFrame(chg_rows).T.reindex(columns=DIST_LOOKBACKS)
+    level_df.columns = chg_df.columns = [f"{y}y" for y in DIST_LOOKBACKS]
+
+    m1, m2 = st.columns(2)
+    with m1:
+        st.markdown(f"**{category} Net — Z-score**")
+        st.dataframe(level_df.style.map(_dist_style_z).format("{:.2f}", na_rep="—"), width='stretch')
+    with m2:
+        st.markdown(f"**{category} Weekly Change — Z-score**")
+        st.dataframe(chg_df.style.map(_dist_style_z).format("{:.2f}", na_rep="—"), width='stretch')
+
+def _view_distribution():
+    full = raw[(raw["Commodity"] == commodity) & (raw["Crop"] == "All")] if "Crop" in raw.columns \
+        else raw[raw["Commodity"] == commodity]
+    render_distribution(full.sort_values("Date").reset_index(drop=True), commodity, report)
+
+
 def _view_concentration():
     if report == "CIT":
         _na("Concentration data is only available in the Disaggregated report.")
@@ -6151,6 +6352,8 @@ VIEWS = {
     "CIT vs Disagg":      _view_comparison,
     "Pain Trade Monitor": lambda: _tab_pain_trade(df, commodity, report, color, is_options),
     "Spec Proximity":     lambda: render_spec_proximity(start_date, end_date),
+    "Distribution":       _view_distribution,
+    "Z-Score Matrix":     render_zscore_matrix,
 }
 
 # "buttons": segmented selector — only the chosen view is built on each rerun.
@@ -6162,6 +6365,7 @@ VIEW_GROUPS = {
                     "Spreading", "Old / New", "CIT vs Disagg"],
     "Analytics":   ["Correlation", "Spec Prediction", "Specs in VaR",
                     "Pain Trade Monitor", "Spec Proximity"],
+    "Distribution": ["Distribution", "Z-Score Matrix"],
 }
 
 def _nav_css(accent):
