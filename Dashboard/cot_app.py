@@ -6157,11 +6157,26 @@ VIEWS = {
 # "tabs":    original st.tabs — all 13 views are built on every rerun.
 NAV_STYLE = "buttons"
 
+VIEW_GROUPS = {
+    "Positioning": ["Recap", "Recap (Charts)", "Spec", "Commercial", "Concentration",
+                    "Spreading", "Old / New", "CIT vs Disagg"],
+    "Analytics":   ["Correlation", "Spec Prediction", "Specs in VaR",
+                    "Pain Trade Monitor", "Spec Proximity"],
+}
+
 if NAV_STYLE == "buttons":
-    # Keyed widget, so the selected view survives sidebar filter changes.
-    view = st.segmented_control("View", list(VIEWS), default="Recap",
-                                key="main_view", label_visibility="collapsed")
-    VIEWS[view or "Recap"]()
+    # Keyed widgets, so the selected group/view survive sidebar filter changes.
+    group = st.segmented_control("Section", list(VIEW_GROUPS), default="Positioning",
+                                 key="main_group", label_visibility="collapsed") or "Positioning"
+    group_views = VIEW_GROUPS[group]
+    # Streamlit drops a widget's state while it isn't rendered, so the other
+    # group's last view is remembered in a plain session key and fed back as default.
+    last_key = f"_last_view_{group}"
+    last = st.session_state.get(last_key, group_views[0])
+    view = st.segmented_control("View", group_views, default=last,
+                                key=f"main_view_{group}", label_visibility="collapsed") or last
+    st.session_state[last_key] = view
+    VIEWS[view]()
 else:
     # Fixed tab count — Streamlit preserves the active tab when sidebar filters change.
     for _tab, _render in zip(st.tabs(list(VIEWS)), VIEWS.values()):
