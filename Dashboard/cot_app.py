@@ -6111,32 +6111,19 @@ def _na(msg):
         unsafe_allow_html=True)
 
 
-# Fixed tab count — Streamlit preserves the active tab when sidebar filters change.
-tabs = st.tabs([
-    "Recap", "Recap (Charts)", "Spec", "Commercial",
-    "Concentration", "Spreading", "Old / New",
-    "Correlation", "Spec Prediction", "Specs in VaR", "CIT vs Disagg",
-    "Pain Trade Monitor", "Spec Proximity",
-])
-
-with tabs[0]:  _tab_recap(df, report, color, commodity, is_options)
-with tabs[1]:  _tab_recap_charts(df, report, color, commodity)
-with tabs[2]:  _tab_spec(df, report, color)
-with tabs[3]:  _tab_commercial(df, report, color)
-
-with tabs[4]:  # Concentration
+def _view_concentration():
     if report == "CIT":
         _na("Concentration data is only available in the Disaggregated report.")
     else:
         _tab_concentration(df, color)
 
-with tabs[5]:  # Spreading
+def _view_spreading():
     if report == "Disagg" and not is_options:
         _tab_spreading(df, color, df_all_crops, commodity)
     else:
         _na("Spreading positions are only available in the Disaggregated report (Fut or F&O).")
 
-with tabs[6]:  # Old / New
+def _view_old_new():
     if report == "CIT":
         _na("Old / New crop split is only available in the Disaggregated report.")
     elif df_all_crops is not None:
@@ -6144,18 +6131,42 @@ with tabs[6]:  # Old / New
     else:
         _na("Old / New crop split is not available for this commodity.")
 
-with tabs[7]:  _tab_correlation(df, report, color)
-with tabs[8]:  _tab_analysis(df, report, color, commodity)
-with tabs[9]:  _tab_spec_var(commodity, df, report, color, start_date, end_date)
-
-with tabs[10]:  # CIT vs Disagg
+def _view_comparison():
     if commodity in CIT_COMMS and not is_options:
         _tab_comparison(commodity, start_date, end_date, color)
     else:
         _na("CIT vs Disagg comparison is only available for KC, CC, SB, and CT with a non-Options report.")
 
-with tabs[11]: _tab_pain_trade(df, commodity, report, color, is_options)
-with tabs[12]: render_spec_proximity(start_date, end_date)
+VIEWS = {
+    "Recap":              lambda: _tab_recap(df, report, color, commodity, is_options),
+    "Recap (Charts)":     lambda: _tab_recap_charts(df, report, color, commodity),
+    "Spec":               lambda: _tab_spec(df, report, color),
+    "Commercial":         lambda: _tab_commercial(df, report, color),
+    "Concentration":      _view_concentration,
+    "Spreading":          _view_spreading,
+    "Old / New":          _view_old_new,
+    "Correlation":        lambda: _tab_correlation(df, report, color),
+    "Spec Prediction":    lambda: _tab_analysis(df, report, color, commodity),
+    "Specs in VaR":       lambda: _tab_spec_var(commodity, df, report, color, start_date, end_date),
+    "CIT vs Disagg":      _view_comparison,
+    "Pain Trade Monitor": lambda: _tab_pain_trade(df, commodity, report, color, is_options),
+    "Spec Proximity":     lambda: render_spec_proximity(start_date, end_date),
+}
+
+# "buttons": segmented selector — only the chosen view is built on each rerun.
+# "tabs":    original st.tabs — all 13 views are built on every rerun.
+NAV_STYLE = "buttons"
+
+if NAV_STYLE == "buttons":
+    # Keyed widget, so the selected view survives sidebar filter changes.
+    view = st.segmented_control("View", list(VIEWS), default="Recap",
+                                key="main_view", label_visibility="collapsed")
+    VIEWS[view or "Recap"]()
+else:
+    # Fixed tab count — Streamlit preserves the active tab when sidebar filters change.
+    for _tab, _render in zip(st.tabs(list(VIEWS)), VIEWS.values()):
+        with _tab:
+            _render()
 
 # Pairs tab hidden — re-enable by adding "Pairs" to st.tabs() and wiring:
 # with tabs[11]:
