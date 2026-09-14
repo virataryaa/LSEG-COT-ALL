@@ -6164,17 +6164,67 @@ VIEW_GROUPS = {
                     "Pain Trade Monitor", "Spec Proximity"],
 }
 
+def _nav_css(accent):
+    """Section row = pill switch, view row = underline tabs; both in the
+    commodity accent. Scoped via st.container(key=...) → .st-key-<key>."""
+    sec = ".st-key-nav_section"
+    vw  = ".st-key-nav_view"
+    return f"""<style>
+  {sec} [data-testid="stButtonGroup"] {{ gap:0; }}
+  {sec} [data-testid="stButtonGroup"] > div {{
+    display:inline-flex; gap:4px; padding:4px; background:#f1f3f7;
+    border:1px solid #e3e7ee; border-radius:999px;
+  }}
+  {sec} button[kind^="segmented_control"] {{
+    border:none !important; border-radius:999px !important; margin:0 !important;
+    padding:.35rem 1.25rem !important; min-height:0 !important;
+    background:transparent !important; box-shadow:none !important;
+    transition:background .15s ease, color .15s ease;
+  }}
+  {sec} button[kind^="segmented_control"] p {{
+    font-size:.84rem !important; font-weight:600 !important; letter-spacing:.02em;
+    color:#5b6472 !important;
+  }}
+  {sec} button[kind="segmented_control"]:hover {{ background:#e6e9f0 !important; }}
+  {sec} button[kind="segmented_controlActive"] {{
+    background:{accent} !important; box-shadow:0 1px 3px rgba(0,0,0,.18) !important;
+  }}
+  {sec} button[kind="segmented_controlActive"] p {{ color:#ffffff !important; }}
+
+  {vw} {{ margin-top:-.35rem; border-bottom:1px solid #e3e7ee; gap:0; }}
+  {vw} [data-testid="stButtonGroup"] > div {{ gap:2px; flex-wrap:wrap; }}
+  {vw} button[kind^="segmented_control"] {{
+    border:none !important; border-radius:6px 6px 0 0 !important; margin:0 0 -1px 0 !important;
+    padding:.45rem .9rem !important; min-height:0 !important;
+    background:transparent !important; box-shadow:none !important;
+    border-bottom:2px solid transparent !important;
+    transition:color .15s ease, border-color .15s ease, background .15s ease;
+  }}
+  {vw} button[kind^="segmented_control"] p {{
+    font-size:.81rem !important; font-weight:500 !important; color:#6b7280 !important;
+  }}
+  {vw} button[kind="segmented_control"]:hover {{ background:#f5f6f9 !important; }}
+  {vw} button[kind="segmented_control"]:hover p {{ color:#1f2937 !important; }}
+  {vw} button[kind="segmented_controlActive"] {{
+    border-bottom:2px solid {accent} !important;
+  }}
+  {vw} button[kind="segmented_controlActive"] p {{ color:{accent} !important; font-weight:600 !important; }}
+</style>"""
+
 if NAV_STYLE == "buttons":
+    st.markdown(_nav_css(color), unsafe_allow_html=True)
     # Keyed widgets, so the selected group/view survive sidebar filter changes.
-    group = st.segmented_control("Section", list(VIEW_GROUPS), default="Positioning",
-                                 key="main_group", label_visibility="collapsed") or "Positioning"
+    with st.container(key="nav_section"):
+        group = st.segmented_control("Section", list(VIEW_GROUPS), default="Positioning",
+                                     key="main_group", label_visibility="collapsed") or "Positioning"
     group_views = VIEW_GROUPS[group]
     # Streamlit drops a widget's state while it isn't rendered, so the other
     # group's last view is remembered in a plain session key and fed back as default.
     last_key = f"_last_view_{group}"
     last = st.session_state.get(last_key, group_views[0])
-    view = st.segmented_control("View", group_views, default=last,
-                                key=f"main_view_{group}", label_visibility="collapsed") or last
+    with st.container(key="nav_view"):
+        view = st.segmented_control("View", group_views, default=last,
+                                    key=f"main_view_{group}", label_visibility="collapsed") or last
     st.session_state[last_key] = view
     VIEWS[view]()
 else:
