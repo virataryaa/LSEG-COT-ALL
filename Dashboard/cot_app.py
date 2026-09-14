@@ -6179,7 +6179,9 @@ _ZBAR_CSS = """<style>
   font-size:.8rem;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
 .zbt th{background:#f8fafc;color:#64748b;font-weight:600;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;
   padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:center}
-.zbt th:first-child{text-align:left;width:30%;padding-left:12px}
+.zbt th:first-child{text-align:left;width:26%;padding-left:12px}
+.zbt th:last-child,.zbt td:last-child{width:20%}
+.zbt .zv{max-width:calc(100% - 12px)}
 .zbt td{padding:7px 8px;border-bottom:1px solid #f1f5f9}
 .zbt tr:last-child td{border-bottom:none}
 .zbt tr:hover td{background:#fafbfc}
@@ -6193,31 +6195,48 @@ _ZBAR_CSS = """<style>
 .zleg{font-size:.7rem;color:#94a3b8;margin-top:6px}
 </style>"""
 
-def _dist_zbar_cell(v):
-    """Diverging bar from the centre line; the value sits in the opposite half."""
+def _dist_zbar_cell(v, cap=_ZBAR_CAP, fmt="{:+.2f}", strong_at=2.0, bordered=False):
+    """Diverging bar from the centre line; the value sits in the opposite half.
+    `cap` sets what saturates the bar; `strong_at` sets the bold/dark threshold
+    (both in the same units as `v`); `bordered` adds a left divider (for a
+    column that isn't part of the z-score set, e.g. a price-change column)."""
+    td = "<td style='border-left:1px solid #e5e7eb'>" if bordered else "<td>"
     if pd.isna(v):
-        return "<td><div class='zt'><span class='zv' style='left:50%;transform:translate(-50%,-50%);color:#9ca3af'>—</span></div></td>"
-    frac = min(abs(v), _ZBAR_CAP) / _ZBAR_CAP * 50          # % of track width, from centre
-    pos, strong = v >= 0, abs(v) >= 2
+        return f"{td}<div class='zt'><span class='zv' style='left:50%;transform:translate(-50%,-50%);color:#9ca3af'>—</span></div></td>"
+    frac = min(abs(v), cap) / cap * 50          # % of track width, from centre
+    pos, strong = v >= 0, abs(v) >= strong_at
     clr = ("#16a34a" if strong else "#86efac") if pos else ("#dc2626" if strong else "#fca5a5")
     bar = (f"left:50%;width:{frac:.1f}%;border-radius:0 5px 5px 0" if pos else
            f"right:50%;width:{frac:.1f}%;border-radius:5px 0 0 5px")
     lbl = "right:calc(50% + 6px)" if pos else "left:calc(50% + 6px)"
     txt = ("color:#15803d;font-weight:700" if pos else "color:#b91c1c;font-weight:700") if strong else ""
-    return (f"<td><div class='zt'><div class='zb' style='{bar};background:{clr}'></div>"
-            f"<span class='zv' style='{lbl};{txt}'>{v:+.2f}</span></div></td>")
+    return (f"{td}<div class='zt'><div class='zb' style='{bar};background:{clr}'></div>"
+            f"<span class='zv' style='{lbl};{txt}'>{fmt.format(v)}</span></div></td>")
 
-def _dist_zbar_table(rows, selected=None):
-    """rows: {commodity_code: {years: z}} → HTML diverging-bar table; the sidebar commodity's row is highlighted."""
-    head = "<tr><th>Commodity</th>" + "".join(f"<th>{y}y</th>" for y in DIST_LOOKBACKS) + "</tr>"
+def _dist_zbar_table(rows, selected=None, price_col=None, price_label="Px Δ%"):
+    """rows: {commodity_code: {years: z}} → HTML diverging-bar table; the sidebar
+    commodity's row is highlighted. `price_col`, if given, is a
+    {commodity_code: pct_change} dict appended as one extra bar column on the
+    far right, scaled to its own (shared) range rather than the ±3σ z-score cap."""
+    head = "<tr><th>Commodity</th>" + "".join(f"<th>{y}y</th>" for y in DIST_LOOKBACKS)
+    if price_col is not None:
+        head += (f"<th style='border-left:1px solid #e5e7eb' "
+                 f"title='Latest weekly % price change, Tuesday COT date to Tuesday COT date'>{price_label}</th>")
+    head += "</tr>"
+    price_cap = max(3.0, np.nanmax(np.abs(list(price_col.values())))) if price_col and any(
+        not pd.isna(v) for v in price_col.values()) else 3.0
     body = ""
     for code, zs in rows.items():
         name = COMM_NAMES[code].split(" : ")[1]
         sel = code == selected
         row_style = f" style='background:{COMM_COLORS[code]}14;box-shadow:inset 3px 0 0 {COMM_COLORS[code]}'" if sel else ""
         name_html = f"<b>{name}</b>" if sel else name
-        body += (f"<tr{row_style}><td class='zn'><span class='zd' style='background:{COMM_COLORS[code]}'></span>{name_html}</td>"
-                 + "".join(_dist_zbar_cell(zs.get(y, np.nan)) for y in DIST_LOOKBACKS) + "</tr>")
+        row = (f"<tr{row_style}><td class='zn'><span class='zd' style='background:{COMM_COLORS[code]}'></span>{name_html}</td>"
+               + "".join(_dist_zbar_cell(zs.get(y, np.nan)) for y in DIST_LOOKBACKS))
+        if price_col is not None:
+            row += _dist_zbar_cell(price_col.get(code, np.nan), cap=price_cap, fmt="{:+.1f}%",
+                                   strong_at=price_cap * 2 / 3, bordered=True)
+        body += row + "</tr>"
     return f"<table class='zbt'><thead>{head}</thead><tbody>{body}</tbody></table>"
 
 def _dist_auto_bin(series_list, target_bins=60):
@@ -6338,35 +6357,71 @@ def render_distribution(full, commodity, report):
     st.caption("Distribution of the Rollex (roll-adjusted) price's week-over-week % change over the same "
                "study window as the positioning histograms. Solid line marks the latest value.")
 
-@st.fragment
-def render_zscore_matrix(commodity=None):
-    fut = _dist_prepare(load_disagg("Fut"))
-    fut = fut[fut["Crop"] == "All"]
-    st.caption("All single commodities on the Disaggregated **Futures-only** report, so RC/LCC/LSU "
-               "(no CIT) sit on the same basis as KC/CC/SB/CT. Independent of the sidebar filters. "
-               f"Latest COT date: **{fut['Date'].max():%d %b %Y}**.")
-    category = st.selectbox("Category (matrix)", list(DIST_DISAGG_CATS), key="dist_matrix_cat")
-    net_col = DIST_DISAGG_CATS[category]["net"]
+# Default category is different per basis — CIT's US-style combined leg vs
+# Disagg's own combined leg — so each basis remembers its own selectbox state.
+_MATRIX_DEFAULT_CAT = {"CIT": "Large Spec + Index + Non-Rep", "Disagg": "MM + Other + Non-Rep"}
 
-    level_rows, chg_rows = {}, {}
-    for cmm in DIST_MATRIX_COMMS:
-        dc = fut[fut["Commodity"] == cmm].sort_values("Date")
+@st.fragment
+def render_zscore_matrix(commodity=None, report=None):
+    st.caption(
+        "Every single commodity side by side on **one common report basis** (chosen below), "
+        "so commodities that don't share a CIT report (RC/LCC/LSU, metals) can still be "
+        "compared — this is why it uses its own Report/Category controls instead of the "
+        "sidebar's, which are set per-commodity and would leave those blank."
+    )
+    b1, b2 = st.columns([1, 2])
+    with b1:
+        basis_default = "CIT" if report == "CIT" else "Disagg"
+        basis = st.radio("Report basis (matrix)", ["CIT", "Disagg"],
+                         index=["CIT", "Disagg"].index(basis_default),
+                         horizontal=True, key="dist_matrix_basis")
+    if basis == "CIT":
+        src, cat_map, comms = load_cit(), DIST_CIT_CATS, [c for c in DIST_MATRIX_COMMS if c in CIT_COMMS]
+    else:
+        src, cat_map, comms = _dist_prepare(load_disagg("Fut")), DIST_DISAGG_CATS, DIST_MATRIX_COMMS
+    if "Crop" in src.columns:
+        src = src[src["Crop"] == "All"]
+
+    with b2:
+        cats = list(cat_map)
+        default_cat = _MATRIX_DEFAULT_CAT[basis]
+        category = st.selectbox("Category (matrix)", cats, key=f"dist_matrix_cat_{basis}",
+                                index=cats.index(default_cat) if default_cat in cats else 0)
+    net_col = cat_map[category]["net"]
+    if basis == "CIT":
+        st.caption("KC / CC / SB / CT only — RC, LCC, LSU and the metals have no CIT (Index Traders) report.")
+    st.caption(f"Latest COT date: **{src['Date'].max():%d %b %Y}**.")
+
+    level_rows, chg_rows, price_rows = {}, {}, {}
+    for cmm in comms:
+        dc = src[src["Commodity"] == cmm].sort_values("Date")
         if dc.empty or net_col not in dc.columns:
             continue
         lvl = pd.to_numeric(dc.set_index("Date")[net_col], errors="coerce").dropna()
         level_rows[cmm] = {y: _dist_zscore(lvl, y) for y in DIST_LOOKBACKS}
         chg_rows[cmm]   = {y: _dist_zscore(lvl.diff().dropna(), y) for y in DIST_LOOKBACKS}
+        # Tuesday-to-Tuesday price move: Rollex (roll-adjusted) price aligned to
+        # this commodity's own COT report dates, latest week's % change.
+        # No Rollex file (e.g. metals) -> _inject_rollex is a no-op, no "Px" added.
+        px_df = _inject_rollex(dc[["Date"]], cmm)
+        if "Px" in px_df.columns:
+            px = pd.to_numeric(px_df.set_index("Date")["Px"], errors="coerce").dropna()
+            chg_pct = px.pct_change().dropna()
+            if not chg_pct.empty:
+                price_rows[cmm] = float(chg_pct.iloc[-1]) * 100
 
     st.markdown(_ZBAR_CSS, unsafe_allow_html=True)
     m1, m2 = st.columns(2, gap="large")
     with m1:
         st.markdown(f"**{category} Net — Z-score**")
-        st.markdown(_dist_zbar_table(level_rows, commodity), unsafe_allow_html=True)
+        st.markdown(_dist_zbar_table(level_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
     with m2:
         st.markdown(f"**{category} Weekly Change — Z-score**")
-        st.markdown(_dist_zbar_table(chg_rows, commodity), unsafe_allow_html=True)
-    st.markdown("<div class='zleg'>Bars run from the centre line (z = 0): green = above the window mean, "
-                "red = below. Scaled to ±3σ; darker bar and bold value = |z| ≥ 2.</div>", unsafe_allow_html=True)
+        st.markdown(_dist_zbar_table(chg_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
+    st.markdown("<div class='zleg'>Z-score bars run from the centre line (z = 0): green = above the window "
+                "mean, red = below — scaled to ±3σ, darker/bold at |z| ≥ 2. The right-most Px Δ% column is "
+                "each commodity's own most recent weekly price move (Tuesday COT date to Tuesday COT date), "
+                "scaled to the largest move on screen.</div>", unsafe_allow_html=True)
 
 def _view_distribution():
     full = raw[(raw["Commodity"] == commodity) & (raw["Crop"] == "All")] if "Crop" in raw.columns \
@@ -6415,7 +6470,7 @@ VIEWS = {
     "Pain Trade Monitor": lambda: _tab_pain_trade(df, commodity, report, color, is_options),
     "Spec Proximity":     lambda: render_spec_proximity(start_date, end_date, commodity),
     "Distribution":       _view_distribution,
-    "Z-Score Matrix":     lambda: render_zscore_matrix(commodity),
+    "Z-Score Matrix":     lambda: render_zscore_matrix(commodity, report),
 }
 
 # "buttons": segmented selector — only the chosen view is built on each rerun.
