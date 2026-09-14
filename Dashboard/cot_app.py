@@ -2345,7 +2345,8 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
                                 max_height=148), unsafe_allow_html=True)
 
     with _exp("Historical positions  ·  k lots", expanded=True):
-        st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT, decimals=0), unsafe_allow_html=True)
+        st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT,
+                                decimals=1 if show_hist_decimals else 0), unsafe_allow_html=True)
 
     with _exp("Weekly change  ·  k lots", expanded=True):
         chg = view.diff(-1)
@@ -4006,7 +4007,8 @@ def render_combined(commodity, start_date, end_date, color):
         with _exp("Historical positions  ·  k lots", expanded=True):
             disp = body_df.iloc[:20].copy()
             disp.index = [f"{dt.day}-{dt.strftime('%b-%y')}" if hasattr(dt,'day') else str(dt) for dt in disp.index]
-            st.markdown(_recap_html(disp, scroll=True, decimals=0), unsafe_allow_html=True)
+            st.markdown(_recap_html(disp, scroll=True,
+                                    decimals=1 if show_hist_decimals else 0), unsafe_allow_html=True)
 
         with _exp("Weekly change  ·  k lots", expanded=True):
             chg = body_df.diff(-1).iloc[:20].copy()
@@ -4640,6 +4642,17 @@ with st.sidebar:
     end_date   = st.date_input("To",   value=_max_date,
                                min_value=datetime.date(2010,1,1), max_value=_max_date,
                                key=f"dt_to_{_date_key_suffix}")
+
+    # Tiny, deliberately unobtrusive — Historical positions defaults to whole
+    # lots; this is the escape hatch for someone who actually wants the tenth.
+    st.markdown("""<style>
+      .st-key-hist_decimal_toggle{margin-top:10px}
+      .st-key-hist_decimal_toggle label p{font-size:.66rem!important;color:#9ca3af!important}
+      .st-key-hist_decimal_toggle [data-testid="stWidgetLabel"]{margin-bottom:0!important}
+      .st-key-hist_decimal_toggle [data-baseweb="checkbox"]{transform:scale(.7);transform-origin:left center}
+    </style>""", unsafe_allow_html=True)
+    with st.container(key="hist_decimal_toggle"):
+        show_hist_decimals = st.toggle("Decimals in Historical positions", value=False, key="hist_decimals")
 
 
 
