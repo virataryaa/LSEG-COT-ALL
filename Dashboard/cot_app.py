@@ -4,6 +4,7 @@ Run: streamlit run cot_app.py
 """
 
 import datetime
+import re
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -391,7 +392,7 @@ def _get_y(d, col, unit):
     return pd.Series(dtype=float)
 
 def show_table(d: pd.DataFrame, pos_cols: list, chg_cols: list, label: str, n=60, scale=True):
-    with st.expander(label, expanded=False):
+    with _exp(label, expanded=False):
         avail_p = [c for c in pos_cols if c and c in d.columns]
         avail_c = [c for c in chg_cols if c and c in d.columns]
         src = d.sort_values("Date", ascending=False).head(n).copy()
@@ -452,6 +453,31 @@ def show_table(d: pd.DataFrame, pos_cols: list, chg_cols: list, label: str, n=60
         html = (f"{_RECAP_CSS}<div style='overflow-x:auto;overflow-y:auto;max-height:480px;margin-bottom:6px'>"
                 f"<table class='rtbl'><thead>{hdr_html}</thead><tbody>{body_html}</tbody></table></div>")
         st.markdown(html, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COMMODITY-PREFIXED EXPANDERS / CHART TITLES
+# The page header was removed; instead every expander label and chart title
+# starts with the sidebar commodity code ("KC  ·  ..."). Labels that already
+# name a commodity are left alone. Multi-commodity views call st.expander /
+# st.plotly_chart directly so they aren't mislabelled.
+# ══════════════════════════════════════════════════════════════════════════════
+def _comm_prefix(text):
+    code = st.session_state.get("sb_commodity")
+    if not code or not text:
+        return text
+    plain = re.sub(r"<[^>]+>", "", str(text))
+    if re.search(r"\b" + re.escape(code) + r"\b", plain) or COMM_NAMES[code].split(" : ")[1] in plain:
+        return text
+    return f"{code}  ·  {text}"
+
+def _exp(label, *args, **kwargs):
+    return st.expander(_comm_prefix(label), *args, **kwargs)
+
+def _chart(fig, *args, **kwargs):
+    title = getattr(getattr(getattr(fig, "layout", None), "title", None), "text", None)
+    if title:
+        fig.update_layout(title_text=_comm_prefix(title))
+    return st.plotly_chart(fig, *args, **kwargs)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CHART FUNCTIONS
@@ -777,13 +803,13 @@ def render_spec(d, report, color):
     lc, sc, nc, spc = cfg["long"], cfg["short"], cfg["net"], cfg["spread"]
     r, g, b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
 
-    with st.expander("Seasonality", expanded=False):
+    with _exp("Seasonality", expanded=False):
         seas_items = [(lc, C_LONG, "Long"), (sc, C_SHORT, "Short"), (nc, C_NET, "Net")]
         avail_s = [(col, clr, lbl) for col, clr, lbl in seas_items if col in d.columns]
         scols = st.columns(len(avail_s))
         for ch, (col, clr, lbl) in zip(scols, avail_s):
             with ch:
-                st.plotly_chart(seasonal(d, col, clr, f"{cat} {lbl}"), width='stretch')
+                _chart(seasonal(d, col, clr, f"{cat} {lbl}"), width='stretch')
 
     show_px = rollex_toggle("spec_show_px")
 
@@ -809,7 +835,7 @@ def render_spec(d, report, color):
             line=dict(color="#94a3b8", width=1.4, dash="dot"),
             visible="legendonly",
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Spread: %{{y:.1f}}{suffix}<extra></extra>")})
-    st.plotly_chart(timeseries(d, traces, f"{cat}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
+    _chart(timeseries(d, traces, f"{cat}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
 
     # % of Total OI chart
     oi = d["Total OI"].replace(0, np.nan) if "Total OI" in d.columns else None
@@ -835,10 +861,10 @@ def render_spec(d, report, color):
                 hovertemplate="<b>%{x|%d %b %Y}</b><br>Spread: %{y:.1f}%<extra></extra>")})
         if pct_traces:
             st.caption("Denominator: All Crop Total OI")
-            st.plotly_chart(timeseries(d, pct_traces, f"{cat}  ·  % of Total OI", "% of OI", price=show_px), width='stretch')
+            _chart(timeseries(d, pct_traces, f"{cat}  ·  % of Total OI", "% of OI", price=show_px), width='stretch')
 
     # Stacked Long Add/Liq + Short Add/Cover bars + Price
-    st.plotly_chart(bars_combined(d, lc, sc, nc, f"{cat} — weekly flow  ·  k lots", color, price=show_px),
+    _chart(bars_combined(d, lc, sc, nc, f"{cat} — weekly flow  ·  k lots", color, price=show_px),
                     width='stretch')
 
     show_table(d, [lc, sc, nc] + ([spc] if spc else []) + ["Px"],
@@ -858,13 +884,13 @@ def render_commercial(d, report, color):
 
     unit = "k lots"
 
-    with st.expander("Seasonality", expanded=False):
+    with _exp("Seasonality", expanded=False):
         seas = [(lc, C_LONG, "Long"), (sc, C_SHORT, "Short"), (nc, C_NET, "Net")]
         avail_s = [(col, clr, name) for col, clr, name in seas if col in d.columns]
         scols = st.columns(len(avail_s))
         for ch, (col, clr, name) in zip(scols, avail_s):
             with ch:
-                st.plotly_chart(seasonal(d, col, clr, f"{lbl} {name}"), width='stretch')
+                _chart(seasonal(d, col, clr, f"{lbl} {name}"), width='stretch')
 
     show_px = rollex_toggle("comm_show_px")
 
@@ -882,7 +908,7 @@ def render_commercial(d, report, color):
             fill="tozeroy", fillcolor="rgba(26,86,219,0.07)",
             line=dict(color=C_NET, width=2.2),
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Net: %{{y:.1f}}{suffix}<extra></extra>")})
-    st.plotly_chart(timeseries(d, traces, f"{lbl}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
+    _chart(timeseries(d, traces, f"{lbl}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
 
     # % of Total OI chart
     oi = d["Total OI"].replace(0, np.nan) if "Total OI" in d.columns else None
@@ -901,10 +927,10 @@ def render_commercial(d, report, color):
                 line=dict(color=C_NET, width=2.2),
                 hovertemplate="<b>%{x|%d %b %Y}</b><br>Net: %{y:.1f}%<extra></extra>")})
         if pct_traces:
-            st.plotly_chart(timeseries(d, pct_traces, f"{lbl}  ·  % of Total OI", "% of OI", price=show_px), width='stretch')
+            _chart(timeseries(d, pct_traces, f"{lbl}  ·  % of Total OI", "% of OI", price=show_px), width='stretch')
 
     # Stacked Long Add/Liq + Short Add/Cover bars + Price
-    st.plotly_chart(bars_combined(d, lc, sc, nc, f"{lbl} — weekly flow  ·  k lots", color, price=show_px),
+    _chart(bars_combined(d, lc, sc, nc, f"{lbl} — weekly flow  ·  k lots", color, price=show_px),
                     width='stretch')
 
     show_table(d, [lc, sc, nc, "Px"], [lc, sc, nc], f"Data table — {lbl}")
@@ -974,7 +1000,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
         traces.append({"trace": go.Scatter(x=d["Date"],y=y,name=lbl,
             line=dict(color=clr,width=2.0),
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{lbl}: %{{y:.1f}}<extra></extra>")})
-    st.plotly_chart(timeseries(d,traces,f"Spreading by Category  ·  {ylabel}",ylabel,price=show_px), width='stretch')
+    _chart(timeseries(d,traces,f"Spreading by Category  ·  {ylabel}",ylabel,price=show_px), width='stretch')
 
     avail = [(lbl,col,clr) for lbl,(col,clr) in SPREAD_COLS.items() if col in d.columns]
 
@@ -1037,11 +1063,11 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
                     xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
                     yaxis=dict(**_ax()),
                 )
-                st.plotly_chart(fig, width='stretch')
+                _chart(fig, width='stretch')
 
     # ── 2. OC/NC Decomposition (expander, open by default) ───────────────────
     if _has_crops and not _ocnc.empty:
-        with st.expander("OC/NC Cross-Crop Spreading  ·  Decomposition", expanded=True):
+        with _exp("OC/NC Cross-Crop Spreading  ·  Decomposition", expanded=True):
             st.markdown(
                 "<p style='font-size:.76rem;color:#555;margin-bottom:10px'>"
                 "<b>OC/NC = All Spreading − Old Spreading − Other Spreading</b></p>",
@@ -1115,7 +1141,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
                             font_size=10, bgcolor="rgba(0,0,0,0)"),
                 xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(), title_text="k lots", title_font_size=10))
-            st.plotly_chart(fig_stack, width='stretch')
+            _chart(fig_stack, width='stretch')
             fig_pct = go.Figure()
             for lbl3, (col3, clr3, short3) in _OCNC_CATS.items():
                 pct_col = f"{short3}_OCNC_pct"
@@ -1134,17 +1160,17 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
                 xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(), title_text="% of All Spreading",
                            title_font_size=10, ticksuffix="%", range=[0, 100]))
-            st.plotly_chart(fig_pct, width='stretch')
+            _chart(fig_pct, width='stretch')
 
     # ── 3. Seasonality — calendar week (collapsed) ────────────────────────────
-    with st.expander("Seasonality", expanded=False):
+    with _exp("Seasonality", expanded=False):
         ch1,ch2,ch3 = st.columns(3)
         for ch,(lbl,col,clr) in zip([ch1,ch2,ch3], avail):
-            with ch: st.plotly_chart(seasonal(d,col,clr,f"{lbl} Spread"), width='stretch')
+            with ch: _chart(seasonal(d,col,clr,f"{lbl} Spread"), width='stretch')
 
     # ── 4. Old/New/OC·NC Seasonality (collapsed) ─────────────────────────────
     if _has_crops and _has_on:
-        with st.expander("Old / New / OC·NC Spreading  ·  Seasonality", expanded=False):
+        with _exp("Old / New / OC·NC Spreading  ·  Seasonality", expanded=False):
             _forced_sm = {"CT": 7, "KC": 9, "CC": 9, "SB": 9}
             _def_sm    = _forced_sm.get(commodity, CROP_START_MONTH)
             if st.session_state.get("_spread_seas_comm") != commodity:
@@ -1190,9 +1216,9 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
                     f"margin:14px 0 4px;letter-spacing:.03em'>{_clbl.upper()}</div>",
                     unsafe_allow_html=True)
                 c1, c2, c3 = st.columns(3)
-                with c1: st.plotly_chart(_spsc(f"{_sh}_Old",  f"{_clbl}  ·  Old Crop  ·  k lots",  C_OLD),         width='stretch')
-                with c2: st.plotly_chart(_spsc(f"{_sh}_New",  f"{_clbl}  ·  New Crop  ·  k lots",  C_NEW),         width='stretch')
-                with c3: st.plotly_chart(_spsc(f"{_sh}_OCNC", f"{_clbl}  ·  OC/NC  ·  k lots",     _OCNC_C_CROSS), width='stretch')
+                with c1: _chart(_spsc(f"{_sh}_Old",  f"{_clbl}  ·  Old Crop  ·  k lots",  C_OLD),         width='stretch')
+                with c2: _chart(_spsc(f"{_sh}_New",  f"{_clbl}  ·  New Crop  ·  k lots",  C_NEW),         width='stretch')
+                with c3: _chart(_spsc(f"{_sh}_OCNC", f"{_clbl}  ·  OC/NC  ·  k lots",     _OCNC_C_CROSS), width='stretch')
             st.markdown(
                 "<div style='font-size:.78rem;font-weight:700;color:#374151;"
                 "margin:14px 0 4px;letter-spacing:.03em'>OLD − NEW DIFFERENCE</div>",
@@ -1201,7 +1227,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
             for _dc, (_clbl, _sh, _cc) in zip([dc1, dc2, dc3], _CAT_ORD):
                 with _dc:
                     if f"{_sh}_Diff" in _wsp.columns:
-                        st.plotly_chart(_spsc(f"{_sh}_Diff", f"{_clbl}  ·  Old−New Diff  ·  k lots", "#6b7280"), width='stretch')
+                        _chart(_spsc(f"{_sh}_Diff", f"{_clbl}  ·  Old−New Diff  ·  k lots", "#6b7280"), width='stretch')
 
     # ── 5. Data table (collapsed, bottom) ────────────────────────────────────
     show_table(d, [col for _,(col,_) in SPREAD_COLS.items() if col in d.columns] + ["Total OI"],
@@ -1250,7 +1276,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
             legend=dict(orientation="h", y=-0.2, font=dict(size=9)),
             xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
             yaxis=dict(**_ax(), title_text="%", title_font_size=10))
-        st.plotly_chart(fig_si, width='stretch')
+        _chart(fig_si, width='stretch')
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1455,7 +1481,7 @@ def render_old_new(d_crops, color, commodity=""):
         if commodity in _forced_months else None
     )
 
-    with st.expander("Seasonality  ·  Old vs New Crop (adjustable start)", expanded=True):
+    with _exp("Seasonality  ·  Old vs New Crop (adjustable start)", expanded=True):
         wide_full = _on_seasonal_wide(d_crops)
         if not wide_full.empty:
             if st.session_state.get("_cy_start_comm") != commodity:
@@ -1481,69 +1507,69 @@ def render_old_new(d_crops, color, commodity=""):
                         "margin:14px 0 6px;letter-spacing:.04em'>MANAGED MONEY</div>",
                         unsafe_allow_html=True)
             mm1, mm2, mm3 = st.columns(3)
-            with mm1: st.plotly_chart(_sc("MM Net Old",   "MM Net (Old)  ·  k lots"),   width='stretch')
-            with mm2: st.plotly_chart(_sc("MM Net New",   "MM Net (New)  ·  k lots"),   width='stretch')
-            with mm3: st.plotly_chart(_sc("MM Diff",      "MM Net (Old − New)  ·  k lots"),    width='stretch')
+            with mm1: _chart(_sc("MM Net Old",   "MM Net (Old)  ·  k lots"),   width='stretch')
+            with mm2: _chart(_sc("MM Net New",   "MM Net (New)  ·  k lots"),   width='stretch')
+            with mm3: _chart(_sc("MM Diff",      "MM Net (Old − New)  ·  k lots"),    width='stretch')
             mm4, mm5, _ = st.columns(3)
-            with mm4: st.plotly_chart(_sc("MM Long Old",  "MM Long (Old)  ·  k lots"),  width='stretch')
-            with mm5: st.plotly_chart(_sc("MM Long New",  "MM Long (New)  ·  k lots"),  width='stretch')
+            with mm4: _chart(_sc("MM Long Old",  "MM Long (Old)  ·  k lots"),  width='stretch')
+            with mm5: _chart(_sc("MM Long New",  "MM Long (New)  ·  k lots"),  width='stretch')
             mm6, mm7, _ = st.columns(3)
-            with mm6: st.plotly_chart(_sc("MM Short Old", "MM Short (Old)  ·  k lots"), width='stretch')
-            with mm7: st.plotly_chart(_sc("MM Short New", "MM Short (New)  ·  k lots"), width='stretch')
+            with mm6: _chart(_sc("MM Short Old", "MM Short (Old)  ·  k lots"), width='stretch')
+            with mm7: _chart(_sc("MM Short New", "MM Short (New)  ·  k lots"), width='stretch')
 
             # ── Commercial ────────────────────────────────────────────────────
             st.markdown("<div style='font-size:.75rem;font-weight:700;color:#374151;"
                         "margin:14px 0 6px;letter-spacing:.04em'>COMMERCIAL</div>",
                         unsafe_allow_html=True)
             cm1, cm2, cm3 = st.columns(3)
-            with cm1: st.plotly_chart(_sc("Comm Net Old",   "Comm Net (Old)  ·  k lots"),           width='stretch')
-            with cm2: st.plotly_chart(_sc("Comm Net New",   "Comm Net (New)  ·  k lots"),           width='stretch')
-            with cm3: st.plotly_chart(_sc("Comm Diff",      "Comm Net (Old − New)  ·  k lots"),     width='stretch')
+            with cm1: _chart(_sc("Comm Net Old",   "Comm Net (Old)  ·  k lots"),           width='stretch')
+            with cm2: _chart(_sc("Comm Net New",   "Comm Net (New)  ·  k lots"),           width='stretch')
+            with cm3: _chart(_sc("Comm Diff",      "Comm Net (Old − New)  ·  k lots"),     width='stretch')
             cm4, cm5, _ = st.columns(3)
-            with cm4: st.plotly_chart(_sc("Comm Long Old",  "Comm Long (Old)  ·  k lots"),          width='stretch')
-            with cm5: st.plotly_chart(_sc("Comm Long New",  "Comm Long (New)  ·  k lots"),          width='stretch')
+            with cm4: _chart(_sc("Comm Long Old",  "Comm Long (Old)  ·  k lots"),          width='stretch')
+            with cm5: _chart(_sc("Comm Long New",  "Comm Long (New)  ·  k lots"),          width='stretch')
             cm6, cm7, _ = st.columns(3)
-            with cm6: st.plotly_chart(_sc("Comm Short Old", "Comm Short (Old)  ·  k lots"),         width='stretch')
-            with cm7: st.plotly_chart(_sc("Comm Short New", "Comm Short (New)  ·  k lots"),         width='stretch')
+            with cm6: _chart(_sc("Comm Short Old", "Comm Short (Old)  ·  k lots"),         width='stretch')
+            with cm7: _chart(_sc("Comm Short New", "Comm Short (New)  ·  k lots"),         width='stretch')
 
             # ── Swap Dealers ──────────────────────────────────────────────────
             st.markdown("<div style='font-size:.75rem;font-weight:700;color:#374151;"
                         "margin:14px 0 6px;letter-spacing:.04em'>SWAP DEALERS</div>",
                         unsafe_allow_html=True)
             sw1, sw2, sw3 = st.columns(3)
-            with sw1: st.plotly_chart(_sc("Swap Net Old",   "Swap Net (Old)  ·  k lots"),           width='stretch')
-            with sw2: st.plotly_chart(_sc("Swap Net New",   "Swap Net (New)  ·  k lots"),           width='stretch')
-            with sw3: st.plotly_chart(_sc("Swap Diff",      "Swap Net (Old − New)  ·  k lots"),     width='stretch')
+            with sw1: _chart(_sc("Swap Net Old",   "Swap Net (Old)  ·  k lots"),           width='stretch')
+            with sw2: _chart(_sc("Swap Net New",   "Swap Net (New)  ·  k lots"),           width='stretch')
+            with sw3: _chart(_sc("Swap Diff",      "Swap Net (Old − New)  ·  k lots"),     width='stretch')
             sw4, sw5, _ = st.columns(3)
-            with sw4: st.plotly_chart(_sc("Swap Long Old",  "Swap Long (Old)  ·  k lots"),          width='stretch')
-            with sw5: st.plotly_chart(_sc("Swap Long New",  "Swap Long (New)  ·  k lots"),          width='stretch')
+            with sw4: _chart(_sc("Swap Long Old",  "Swap Long (Old)  ·  k lots"),          width='stretch')
+            with sw5: _chart(_sc("Swap Long New",  "Swap Long (New)  ·  k lots"),          width='stretch')
             sw6, sw7, _ = st.columns(3)
-            with sw6: st.plotly_chart(_sc("Swap Short Old", "Swap Short (Old)  ·  k lots"),         width='stretch')
-            with sw7: st.plotly_chart(_sc("Swap Short New", "Swap Short (New)  ·  k lots"),         width='stretch')
+            with sw6: _chart(_sc("Swap Short Old", "Swap Short (Old)  ·  k lots"),         width='stretch')
+            with sw7: _chart(_sc("Swap Short New", "Swap Short (New)  ·  k lots"),         width='stretch')
 
             # ── Other Reportables ─────────────────────────────────────────────
             st.markdown("<div style='font-size:.75rem;font-weight:700;color:#374151;"
                         "margin:14px 0 6px;letter-spacing:.04em'>OTHER REPORTABLES</div>",
                         unsafe_allow_html=True)
             or1, or2, or3 = st.columns(3)
-            with or1: st.plotly_chart(_sc("Other Net Old",   "Other Net (Old)  ·  k lots"),         width='stretch')
-            with or2: st.plotly_chart(_sc("Other Net New",   "Other Net (New)  ·  k lots"),         width='stretch')
-            with or3: st.plotly_chart(_sc("Other Diff",      "Other Net (Old − New)  ·  k lots"),   width='stretch')
+            with or1: _chart(_sc("Other Net Old",   "Other Net (Old)  ·  k lots"),         width='stretch')
+            with or2: _chart(_sc("Other Net New",   "Other Net (New)  ·  k lots"),         width='stretch')
+            with or3: _chart(_sc("Other Diff",      "Other Net (Old − New)  ·  k lots"),   width='stretch')
             or4, or5, _ = st.columns(3)
-            with or4: st.plotly_chart(_sc("Other Long Old",  "Other Long (Old)  ·  k lots"),        width='stretch')
-            with or5: st.plotly_chart(_sc("Other Long New",  "Other Long (New)  ·  k lots"),        width='stretch')
+            with or4: _chart(_sc("Other Long Old",  "Other Long (Old)  ·  k lots"),        width='stretch')
+            with or5: _chart(_sc("Other Long New",  "Other Long (New)  ·  k lots"),        width='stretch')
             or6, or7, _ = st.columns(3)
-            with or6: st.plotly_chart(_sc("Other Short Old", "Other Short (Old)  ·  k lots"),       width='stretch')
-            with or7: st.plotly_chart(_sc("Other Short New", "Other Short (New)  ·  k lots"),       width='stretch')
+            with or6: _chart(_sc("Other Short Old", "Other Short (Old)  ·  k lots"),       width='stretch')
+            with or7: _chart(_sc("Other Short New", "Other Short (New)  ·  k lots"),       width='stretch')
 
             # ── Open Interest ─────────────────────────────────────────────────
             st.markdown("<div style='font-size:.75rem;font-weight:700;color:#374151;"
                         "margin:14px 0 6px;letter-spacing:.04em'>OPEN INTEREST</div>",
                         unsafe_allow_html=True)
             oi1, oi2, _ = st.columns(3)
-            with oi1: st.plotly_chart(_sc("OI Old %", "OI % (Old)", "%"), width='stretch')
+            with oi1: _chart(_sc("OI Old %", "OI % (Old)", "%"), width='stretch')
 
-    with st.expander("Data table  ·  Old Crop / New Crop", expanded=False):
+    with _exp("Data table  ·  Old Crop / New Crop", expanded=False):
         common_dates = old.index.union(other.index).sort_values()[::-1][:30]
         common_dates_ext = old.index.union(other.index).sort_values()[::-1][:31]
 
@@ -1580,7 +1606,7 @@ def render_old_new(d_crops, color, commodity=""):
         st.markdown(_recap_html(chg_df, signed_groups=all_groups, scroll=True), unsafe_allow_html=True)
 
     # ── OI split ──────────────────────────────────────────────────────────────
-    with st.expander("Open Interest  ·  Old vs New Crop", expanded=False):
+    with _exp("Open Interest  ·  Old vs New Crop", expanded=False):
         dates = old.index.union(other.index).sort_values()
         fig_oi = go.Figure([
             go.Bar(x=dates, y=old.reindex(dates)["Total OI"]/1000, name="Old Crop",
@@ -1596,10 +1622,10 @@ def render_old_new(d_crops, color, commodity=""):
             legend=dict(orientation="h",y=-0.24,x=0.5,xanchor="center",font_size=10),
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-        st.plotly_chart(fig_oi, width='stretch')
+        _chart(fig_oi, width='stretch')
 
     # ── Net positions ─────────────────────────────────────────────────────────
-    with st.expander("Net Positions  ·  MM & Commercial", expanded=False):
+    with _exp("Net Positions  ·  MM & Commercial", expanded=False):
         c1, c2 = st.columns(2)
         for col_c, (col, title) in zip([c1,c2],[("MM Net","Managed Money Net"),("Comm Net","Commercial (Prod) Net")]):
             with col_c:
@@ -1616,10 +1642,10 @@ def render_old_new(d_crops, color, commodity=""):
                     legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-                st.plotly_chart(fig, width='stretch')
+                _chart(fig, width='stretch')
 
     # ── Gross legs ────────────────────────────────────────────────────────────
-    with st.expander("Gross Legs  ·  Old vs New Crop", expanded=False):
+    with _exp("Gross Legs  ·  Old vs New Crop", expanded=False):
         gross_legs = [(c,t) for c,t in [
             ("MM Long","MM Long"),("MM Short","MM Short"),
             ("Producer Long","Comm Long"),("Producer Short","Comm Short"),
@@ -1639,7 +1665,7 @@ def render_old_new(d_crops, color, commodity=""):
                     legend=dict(orientation="h",y=-0.24,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-                st.plotly_chart(fig, width='stretch')
+                _chart(fig, width='stretch')
             with c2:
                 dates2 = old.index.union(other.index).sort_values()
                 fig2 = go.Figure([
@@ -1656,7 +1682,7 @@ def render_old_new(d_crops, color, commodity=""):
                     legend=dict(orientation="h",y=-0.26,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-                st.plotly_chart(fig2, width='stretch')
+                _chart(fig2, width='stretch')
 
 
 
@@ -1704,9 +1730,9 @@ def render_traders(d, report, color):
         legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10),
         xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
         yaxis=dict(**_ax(),title_text="# traders",title_font_size=10))
-    st.plotly_chart(fig, width='stretch')
+    _chart(fig, width='stretch')
 
-    with st.expander("Weekly change — trader counts", expanded=False):
+    with _exp("Weekly change — trader counts", expanded=False):
         cols_w = st.columns(min(len(sel_cols),3))
         for i,(col,name) in enumerate(zip(sel_cols,nice)):
             with cols_w[i%3]:
@@ -1722,7 +1748,7 @@ def render_traders(d, report, color):
                     margin=dict(l=40,r=8,t=32,b=60),showlegend=False,
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax()))
-                st.plotly_chart(fb, width='stretch')
+                _chart(fb, width='stretch')
 
     show_table(d, all_t, sel_cols, "Data table — trader counts", scale=False)
 
@@ -2288,17 +2314,17 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
 
     _PX_PCT = {("Rollex Px", "Δ% 1w")}
 
-    with st.expander("Change summary  ·  k lots", expanded=True):
+    with _exp("Change summary  ·  k lots", expanded=True):
         st.markdown(_recap_html(summary,
                                 signed_rows={"Δ 1w", "Δ 1m", "Z-Score"},
                                 z_rows={"Z-Score"},
                                 pct_subcols=_PX_PCT,
                                 max_height=148), unsafe_allow_html=True)
 
-    with st.expander("Historical positions  ·  k lots", expanded=True):
+    with _exp("Historical positions  ·  k lots", expanded=True):
         st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT), unsafe_allow_html=True)
 
-    with st.expander("Weekly change  ·  k lots", expanded=True):
+    with _exp("Weekly change  ·  k lots", expanded=True):
         chg = view.diff(-1)
         st.markdown(_recap_html(chg, signed=True, change_table=True, scroll=True, pct_subcols=_PX_PCT), unsafe_allow_html=True)
 
@@ -2329,11 +2355,11 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
             st.markdown(_recap_html(chg_stats, signed=True, z_rows={"Z-Score Δ"}, pct_subcols=_PX_PCT), unsafe_allow_html=True)
 
     oi_tbl = _build_oi_df(d, report)
-    with st.expander("OI by category  ·  k lots  &  %", expanded=False):
+    with _exp("OI by category  ·  k lots  &  %", expanded=False):
         st.markdown(_recap_html(oi_tbl, signed_groups={"Δ 1w"}, pct_groups={"OI %"}, scroll=True), unsafe_allow_html=True)
 
     gross_tbl = _build_gross_legs_df(d, report)
-    with st.expander("Gross legs by category  ·  k lots  &  % OI", expanded=False):
+    with _exp("Gross legs by category  ·  k lots  &  % OI", expanded=False):
         st.markdown(
             "<p style='font-size:.72rem;color:#6e6e73;margin:0 0 6px'>"
             "Long/Short include spreading positions. % columns are each leg divided by Total OI.</p>",
@@ -2344,7 +2370,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
     nom_summary, nom_body = _build_nominal_df(d, commodity, report)
     if not nom_body.empty:
         ccy = "GBP" if commodity == "LCC" else "USD"
-        with st.expander(f"Nominal Exposure  ·  M {ccy}", expanded=False):
+        with _exp(f"Nominal Exposure  ·  M {ccy}", expanded=False):
             _spec_note = ("Spec Net = MM Net + Other Net + Non-Rep Net"
                           if report != "CIT" else
                           "Spec Net = Large Spec Net + Non-Rep Net")
@@ -2358,13 +2384,13 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
 
     tr_summary, tr_body = _build_traders_df(d, report)
     if not tr_body.empty:
-        with st.expander("# of Traders", expanded=False):
+        with _exp("# of Traders", expanded=False):
             st.markdown(_recap_html(tr_summary, signed=True), unsafe_allow_html=True)
             st.markdown(_recap_html(tr_body, scroll=True), unsafe_allow_html=True)
 
     lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
     if not lpt_body.empty:
-        with st.expander("k lots / Trader  (avg position size per trader)", expanded=False):
+        with _exp("k lots / Trader  (avg position size per trader)", expanded=False):
             st.markdown(_recap_html(lpt_summary, signed=True), unsafe_allow_html=True)
             st.markdown(_recap_html(lpt_body, scroll=True), unsafe_allow_html=True)
 
@@ -2390,7 +2416,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
 
 **Rest (NET)** — Other Net + Non-Reportable Net combined
 """
-    with st.expander("Column guide", expanded=False):
+    with _exp("Column guide", expanded=False):
         st.markdown(guide)
 
 
@@ -2473,7 +2499,7 @@ def render_concentration(d, color):
             legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10),
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="% of OI",title_font_size=10))
-        st.plotly_chart(fig, width='stretch')
+        _chart(fig, width='stretch')
 
     show_table(d, avail, avail[:4], "Data table — Concentration ratios", scale=False)
 
@@ -2531,7 +2557,7 @@ def render_exposure(d, commodity, color):
             margin=dict(l=60,r=20,t=42,b=50), showlegend=False,
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="$M",title_font_size=10))
-        st.plotly_chart(fig, width='stretch')
+        _chart(fig, width='stretch')
 
     st.markdown(
         "<div style='background:#fff8e8;border:1px solid #fde68a;border-radius:8px;"
@@ -2734,7 +2760,7 @@ def render_analysis(d, report, color, commodity="KC"):
             margin=dict(l=60, r=24, t=48, b=56),
             xaxis=dict(**_ax(x=True), title_text="Price Δ% 1w", ticksuffix="%"),
             yaxis=dict(**_ax(), title_text=f"Δ{sel} (k lots)"))
-        st.plotly_chart(fig_reg, width='stretch')
+        _chart(fig_reg, width='stretch')
 
         bar_win = st.radio(
             "History",
@@ -2798,7 +2824,7 @@ def render_analysis(d, report, color, commodity="KC"):
             yaxis=dict(**_ax(), title_text="Δ (k lots)"),
             legend=dict(orientation="h", y=1.08, x=1, xanchor="right",
                         font=dict(size=9)))
-        st.plotly_chart(fig_avp, width='stretch')
+        _chart(fig_avp, width='stretch')
 
     st.markdown("---")
 
@@ -2879,7 +2905,7 @@ def render_analysis(d, report, color, commodity="KC"):
                        tickvals=labels, ticktext=tick_y,
                        showgrid=False, showline=False, zeroline=False),
         )
-        st.plotly_chart(fig_pw, width='stretch')
+        _chart(fig_pw, width='stretch')
         st.markdown(
             "<p style='font-size:.7rem;color:#9ca3af;margin-top:-8px'>"
             "Greyed cells: p > 0.05 (not statistically significant at 95% confidence)</p>",
@@ -2955,18 +2981,18 @@ def render_analysis(d, report, color, commodity="KC"):
 
         _col_r2, _col_r, _col_b = st.columns(3)
         with _col_r2:
-            st.plotly_chart(
+            _chart(
                 _bar_chart(rsqs, sig_rb, "R²", ".2f", "Variance explained vs Rollex %Δ",
                            mode="unsigned"),
                 width='stretch',
             )
         with _col_r:
-            st.plotly_chart(
+            _chart(
                 _bar_chart(corrs, sig_rb, "Pearson Correlation  (r)", "+.2f", "Correlation with Rollex %Δ"),
                 width='stretch',
             )
         with _col_b:
-            st.plotly_chart(
+            _chart(
                 _bar_chart(betas, sig_rb, "β  (Rollex %Δ per 1k lot)", "+.2f",
                            "% Rollex move per 1k lot weekly Δ"),
                 width='stretch',
@@ -3086,7 +3112,7 @@ def render_analysis(d, report, color, commodity="KC"):
                            font=dict(size=11, color="#374151"), x=0),
                 margin=dict(l=56, r=24, t=44, b=44),
                 yaxis=dict(**_ax(), title_text="Price weekly Δ%"))
-            st.plotly_chart(fig_box, width='stretch')
+            _chart(fig_box, width='stretch')
 
             def _grp_stats(g):
                 yv = dPx_g[group == g]
@@ -3127,7 +3153,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 unsafe_allow_html=True)
 
             # ── Per-regime scatter: flow magnitude vs price move (collapsed) ─
-            with st.expander("FLOW MAGNITUDE vs PRICE MOVE · by regime", expanded=False):
+            with _exp("FLOW MAGNITUDE vs PRICE MOVE · by regime", expanded=False):
                 st.markdown(
                     "<p style='font-size:.7rem;color:#9ca3af;margin:0 0 10px'>"
                     "X = size of that week's dominant driver (k lots) · Y = that week's price Δ% · "
@@ -3190,7 +3216,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 fig_grid.update_layout(**_BASE, height=560,
                     margin=dict(l=50, r=20, t=40, b=40))
                 fig_grid.update_annotations(font=dict(size=10, color="#374151"))
-                st.plotly_chart(fig_grid, width='stretch')
+                _chart(fig_grid, width='stretch')
 
             # ── Long vs Short flow map — every week, no regime bucketing ────
             st.markdown(
@@ -3241,7 +3267,7 @@ def render_analysis(d, report, color, commodity="KC"):
                            constrain="domain"),
                 yaxis=dict(**_ax(), title_text=f"Δ{short_col} (k lots)", range=_rng,
                            scaleanchor="x", scaleratio=1, constrain="domain"))
-            st.plotly_chart(fig_map, width='stretch')
+            _chart(fig_map, width='stretch')
 
             # ── Four-way regression: buying / liquidation / selling / covering ──
             # A single beta_long, beta_short model forces buying and liquidating
@@ -3450,7 +3476,7 @@ def render_analysis(d, report, color, commodity="KC"):
                                    font=dict(size=11, color="#374151"), x=0),
                         margin=dict(l=50, r=20, t=40, b=30), xaxis_rangeslider_visible=False,
                         xaxis=dict(**_ax(x=True)), yaxis=dict(**_ax(), title_text="Price"))
-                    st.plotly_chart(fig_now, width='stretch')
+                    _chart(fig_now, width='stretch')
 
                     _hist_px = rx_daily.tail(260).reset_index(drop=True)
                     net_hist = pd.DataFrame({
@@ -3482,7 +3508,7 @@ def render_analysis(d, report, color, commodity="KC"):
                     fig_ov.update_yaxes(title_text="Price", secondary_y=False, **_ax())
                     fig_ov.update_yaxes(title_text="Net (k lots)", secondary_y=True,
                                          showgrid=False, tickfont=dict(size=9))
-                    st.plotly_chart(fig_ov, width='stretch')
+                    _chart(fig_ov, width='stretch')
 
     # scatter sections moved to dedicated Correlation tab (render_correlation)
 
@@ -3499,7 +3525,7 @@ def render_correlation(d, report, color):
          "Other Long","Other Short","Non Rep Long","Non Rep Short"]
         if c in d.columns]
 
-    with st.expander("Price vs Positioning — scatter", expanded=True):
+    with _exp("Price vs Positioning — scatter", expanded=True):
         c1, _ = st.columns([2,5])
         with c1:
             sel2_list = st.multiselect("COT element (summed if multiple)", all_opts,
@@ -3511,7 +3537,7 @@ def render_correlation(d, report, color):
             d_tmp["_SEL"] = sum(d_tmp[c] for c in sel2_avail)
             ch1, ch2 = st.columns(2)
             with ch1:
-                st.plotly_chart(scatter_2d(d_tmp,"Px","_SEL",color,
+                _chart(scatter_2d(d_tmp,"Px","_SEL",color,
                     f"Price Δ%  vs  {sel2} Δ","Price weekly Δ%",f"{sel2} Δ (k lots)"),
                     width='stretch')
             with ch2:
@@ -3544,9 +3570,9 @@ def render_correlation(d, report, color):
                         margin=dict(l=52,r=20,t=48,b=48),
                         xaxis=dict(**_ax(x=True),title_text="Rollex Px"),
                         yaxis=dict(**_ax(),title_text=f"{sel2} (k lots)"))
-                    st.plotly_chart(fig2, width='stretch')
+                    _chart(fig2, width='stretch')
 
-    with st.expander("COT vs COT Cross-Scatter", expanded=True):
+    with _exp("COT vs COT Cross-Scatter", expanded=True):
         c1, c2 = st.columns(2)
         with c1: xs_sel = st.multiselect("X axis (summed if multiple)", all_opts, default=[all_opts[0]], key="xs_x")
         with c2: ys_sel = st.multiselect("Y axis (summed if multiple)", all_opts, default=[all_opts[min(1,len(all_opts)-1)]], key="xs_y")
@@ -3557,7 +3583,7 @@ def render_correlation(d, report, color):
                 d_tmp = d.copy()
                 d_tmp["_X"] = sum(d_tmp[c] for c in xs_avail)
                 d_tmp["_Y"] = sum(d_tmp[c] for c in ys_avail)
-                st.plotly_chart(scatter_2d(d_tmp,"_X","_Y",color,
+                _chart(scatter_2d(d_tmp,"_X","_Y",color,
                     f"{' + '.join(xs_avail)}  vs  {' + '.join(ys_avail)}",
                     f"X Δ (k lots)","Y Δ (k lots)"), width='stretch')
 
@@ -3579,7 +3605,7 @@ def render_correlation(d, report, color):
                          s if c=="Rollex Px" else s/1000)
         return sum(parts), " + ".join(avail)
 
-    with st.expander("3D Scatter — Weekly Change", expanded=False):
+    with _exp("3D Scatter — Weekly Change", expanded=False):
         c1,c2,c3 = st.columns(3)
         with c1: x3c = st.multiselect("X",all_3d,default=[all_3d[0]],key="3dc_x")
         with c2: y3c = st.multiselect("Y",all_3d,default=[all_3d[1]] if len(all_3d)>1 else [all_3d[0]],key="3dc_y")
@@ -3587,9 +3613,9 @@ def render_correlation(d, report, color):
         if x3c and y3c and z3c:
             xs,xl = _build_series(x3c,"chg"); ys,yl = _build_series(y3c,"chg"); zs,zl = _build_series(z3c,"chg")
             if not xs.empty:
-                st.plotly_chart(scatter_3d(xs,ys,zs,d["Date"],color,f"{xl} × {yl} × {zl} — Weekly Δ",f"{xl} Δ",f"{yl} Δ",f"{zl} Δ"), width='stretch')
+                _chart(scatter_3d(xs,ys,zs,d["Date"],color,f"{xl} × {yl} × {zl} — Weekly Δ",f"{xl} Δ",f"{yl} Δ",f"{zl} Δ"), width='stretch')
 
-    with st.expander("3D Scatter — Position Levels", expanded=False):
+    with _exp("3D Scatter — Position Levels", expanded=False):
         c1,c2,c3 = st.columns(3)
         with c1: x3l = st.multiselect("X",all_3d,default=[all_3d[0]],key="3dl_x")
         with c2: y3l = st.multiselect("Y",all_3d,default=[all_3d[1]] if len(all_3d)>1 else [all_3d[0]],key="3dl_y")
@@ -3597,7 +3623,7 @@ def render_correlation(d, report, color):
         if x3l and y3l and z3l:
             xs,xl = _build_series(x3l,"lvl"); ys,yl = _build_series(y3l,"lvl"); zs,zl = _build_series(z3l,"lvl")
             if not xs.empty:
-                st.plotly_chart(scatter_3d(xs,ys,zs,d["Date"],color,f"{xl} × {yl} × {zl} — Levels",xl,yl,zl), width='stretch')
+                _chart(scatter_3d(xs,ys,zs,d["Date"],color,f"{xl} × {yl} × {zl} — Levels",xl,yl,zl), width='stretch')
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3712,7 +3738,7 @@ def render_comparison(commodity, start_date, end_date, color):
         xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
     )
     fig_ts.update_yaxes(title_text=ylabel, title_font_size=10, **_ax())
-    st.plotly_chart(fig_ts, width='stretch')
+    _chart(fig_ts, width='stretch')
 
     # ── 2. Gap bar chart ───────────────────────────────────────────────────────
     if merged is not None and not merged.empty:
@@ -3732,7 +3758,7 @@ def render_comparison(commodity, start_date, end_date, color):
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="k lots",title_font_size=10),
         )
-        st.plotly_chart(fig_gap, width='stretch')
+        _chart(fig_gap, width='stretch')
 
     # ── 3. Long / Short breakdown ──────────────────────────────────────────────
     cit_lc, cit_sc = cfg.get("cit_long"), cfg.get("cit_short")
@@ -3762,11 +3788,11 @@ def render_comparison(commodity, start_date, end_date, color):
                     legend=dict(orientation="h",y=-0.32,x=0.5,xanchor="center",font_size=10),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax(),title_text=ylabel,title_font_size=10))
-                st.plotly_chart(fig_ls, width='stretch')
+                _chart(fig_ls, width='stretch')
 
     # ── 4. Rolling correlation ─────────────────────────────────────────────────
     if merged is not None and len(merged) > 12:
-        with st.expander("Rolling 52-week Correlation", expanded=False):
+        with _exp("Rolling 52-week Correlation", expanded=False):
             s_cit = pd.Series(np.asarray(merged["cit_net"],dtype=float), index=merged["Date"])
             s_dag = pd.Series(np.asarray(merged["dag_net"],dtype=float), index=merged["Date"])
             roll  = s_cit.rolling(52).corr(s_dag).dropna()
@@ -3783,10 +3809,10 @@ def render_comparison(commodity, start_date, end_date, color):
                 margin=dict(l=50,r=12,t=36,b=50),
                 xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(),title_text="Correlation",title_font_size=10,range=[-1.1,1.1]))
-            st.plotly_chart(fig_rc, width='stretch')
+            _chart(fig_rc, width='stretch')
 
     # ── 5. Data table ──────────────────────────────────────────────────────────
-    with st.expander("Data table", expanded=False):
+    with _exp("Data table", expanded=False):
         cols_cit = [c for c in [cit_nc, cfg.get("cit_long"), cfg.get("cit_short")] if c and c in cit.columns]
         cols_dag = [c for c in [dag_nc, cfg.get("dag_long"), cfg.get("dag_short")] if c and c in dag.columns]
         tbl_cit  = cit[["Date"]+cols_cit].rename(columns={c: f"CIT {c}" for c in cols_cit}).sort_values("Date",ascending=False).head(60)
@@ -3951,15 +3977,15 @@ def render_combined(commodity, start_date, end_date, color):
             index=["Δ 1w","Δ 1m","Z-Score","Avg","Min","Max"],
             columns=body_df.columns)
 
-        with st.expander("Change summary  ·  k lots", expanded=True):
+        with _exp("Change summary  ·  k lots", expanded=True):
             st.markdown(_recap_html(summary_df, signed_rows={"Δ 1w","Δ 1m","Z-Score"}, z_rows={"Z-Score"}, max_height=148), unsafe_allow_html=True)
 
-        with st.expander("Historical positions  ·  k lots", expanded=True):
+        with _exp("Historical positions  ·  k lots", expanded=True):
             disp = body_df.iloc[:20].copy()
             disp.index = [f"{dt.day}-{dt.strftime('%b-%y')}" if hasattr(dt,'day') else str(dt) for dt in disp.index]
             st.markdown(_recap_html(disp, scroll=True), unsafe_allow_html=True)
 
-        with st.expander("Weekly change  ·  k lots", expanded=True):
+        with _exp("Weekly change  ·  k lots", expanded=True):
             chg = body_df.diff(-1).iloc[:20].copy()
             chg.index = disp.index
             st.markdown(_recap_html(chg, signed=True, change_table=True, scroll=True), unsafe_allow_html=True)
@@ -4010,7 +4036,7 @@ def render_combined(commodity, start_date, end_date, color):
                 yaxis=dict(**_ax(), title_text="k lots", title_font_size=10),
                 yaxis2={**_ax(), "title_text": "Price", "title_font_size": 10,
                         "overlaying": "y", "side": "right", "showgrid": False})
-            st.plotly_chart(fig, width='stretch')
+            _chart(fig, width='stretch')
 
         # 1. Combined OI
         _clabel(f"Combined OI = {_oi_a} + {_oi_b}")
@@ -4069,7 +4095,7 @@ def render_combined(commodity, start_date, end_date, color):
                         font_size=10, bgcolor="rgba(0,0,0,0)"),
             xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
             yaxis=dict(**_ax(), title_text="k lots", title_font_size=10))
-        st.plotly_chart(fig_rel, width='stretch')
+        _chart(fig_rel, width='stretch')
 
         # 5. Combined Gross Commercial Legs
         _clabel(f"Combined Commercial = {_comm_a} + {_comm_b}")
@@ -4104,7 +4130,7 @@ def render_combined(commodity, start_date, end_date, color):
             legend=dict(orientation="h",y=-0.2,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-        st.plotly_chart(fig, width='stretch')
+        _chart(fig, width='stretch')
 
         # Combined Gross Spec Legs — Long / Short
         _clabel(f"Combined Gross Spec = ({_spec_a}) + ({_spec_b})  ·  Long / Short")
@@ -4122,7 +4148,7 @@ def render_combined(commodity, start_date, end_date, color):
             legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-        st.plotly_chart(fig_gross, width='stretch')
+        _chart(fig_gross, width='stretch')
 
         delta = merged["Comb Net"].diff().fillna(0)
         fig2 = go.Figure(go.Bar(x=merged["Date"], y=delta,
@@ -4134,7 +4160,7 @@ def render_combined(commodity, start_date, end_date, color):
             margin=dict(l=50,r=12,t=36,b=60), showlegend=False,
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="Δ k lots",title_font_size=10))
-        st.plotly_chart(fig2, width='stretch')
+        _chart(fig2, width='stretch')
 
     # ── Tab 3: Gross Legs ────────────────────────────────────────────────────
     with c_tabs[3]:
@@ -4163,7 +4189,7 @@ def render_combined(commodity, start_date, end_date, color):
                     legend=dict(orientation="h",y=-0.24,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax(),title_text="k lots",title_font_size=10))
-                st.plotly_chart(fig, width='stretch')
+                _chart(fig, width='stretch')
 
     # ── Tab 4: Weekly Flow ────────────────────────────────────────────────────
     with c_tabs[4]:
@@ -4184,7 +4210,7 @@ def render_combined(commodity, start_date, end_date, color):
                 margin=dict(l=44,r=8,t=36,b=52), showlegend=False,
                 xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(),title_text="Δ k lots",title_font_size=9))
-            with ch: st.plotly_chart(fig, width='stretch')
+            with ch: _chart(fig, width='stretch')
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -4377,7 +4403,7 @@ def _render_dynamic_proximity(comm, df_comm):
     latest_date = pd.Timestamp(latest["Date"])
     latest_px   = float(latest["Px"]) if pd.notna(latest["Px"]) else None
 
-    with st.expander("Dynamic Spec Proximity  ·  vs latest spec", expanded=False):
+    with st.expander(f"{comm}  ·  Dynamic Spec Proximity  ·  vs latest spec", expanded=False):
         # KPI strip
         _px_str = f"{latest_px:.2f}" if latest_px is not None else "—"
         st.markdown(
@@ -4624,16 +4650,7 @@ if df_all_crops is not None:
 # ══════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ══════════════════════════════════════════════════════════════════════════════
-ver_lbl = "" if report=="CIT" else f" — {version}"
-st.markdown(
-    f"<div style='display:flex;align-items:center;gap:12px;margin-bottom:4px'>"
-    f"<div style='width:5px;height:38px;background:{color};border-radius:3px'></div>"
-    f"<div>"
-    f"<div style='font-size:1.2rem;font-weight:700;color:{color}'>{COMM_NAMES[commodity]}</div>"
-    f"<div style='font-size:.73rem;color:#888'>{report}{ver_lbl} &nbsp;·&nbsp; "
-    f"{start_date.strftime('%d %b %Y')} → {end_date.strftime('%d %b %Y')}</div>"
-    f"</div></div>", unsafe_allow_html=True)
-st.markdown("---")
+# Page header removed — commodity is shown on each expander / chart title (see _comm_prefix).
 
 if df.empty:
     st.warning("No data for the selected filters."); st.stop()
@@ -4697,7 +4714,7 @@ def render_recap_charts(d, report, color, commodity):
 
         # Col 1 — Net positioning. Title spells out the composition.
         with c1:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Net Spec (Large + Small) & Net Index k lots",
                 {"Net Spec": spec_net / 1000, "Net Index": idx_net / 1000},
                 [C_NET, C_LONG]
@@ -4706,7 +4723,7 @@ def render_recap_charts(d, report, color, commodity):
         # Col 2 — Large Net vs Small Net breakdown, right beside it, so the
         # "Net Spec = Large + Small" composition is visible at a glance.
         with c2:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Large Net & Small Net k lots",
                 {"Large Net": large_net / 1000, "Small Net": small_net / 1000},
                 ["#93c5fd", "#c4b5fd"]
@@ -4715,7 +4732,7 @@ def render_recap_charts(d, report, color, commodity):
         # Col 9 (was empty in CIT layout) — Spec gross k lots, moved here
         # to make room for the Large/Small breakdown chart above in c2.
         with c9:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Spec Gross k lots",
                 {"Large Long": gc("Spec Long") / 1000, "Large Short": gc("Spec Short") / 1000},
                 [C_LONG, C_SHORT]
@@ -4723,7 +4740,7 @@ def render_recap_charts(d, report, color, commodity):
 
         # Col 3 — Spec gross % of OI
         with c3:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Spec Gross % of OI",
                 {"Lrg+Sml Long %":  (gc("Spec Long")  + gc("Non Rep Long"))  / oi * 100,
                  "Lrg+Sml Short %": (gc("Spec Short") + gc("Non Rep Short")) / oi * 100},
@@ -4733,7 +4750,7 @@ def render_recap_charts(d, report, color, commodity):
         # Col 4 — Spec nominal M USD (gross, Large + Small — same Lrg+Sml
         # convention as the "Spec Gross % of OI" chart beside it)
         with c4:
-            st.plotly_chart(_line(
+            _chart(_line(
                 f"Spec Nominal M {ccy}",
                 {"Lrg+Sml Long":  (gc("Spec Long")  + gc("Non Rep Long").fillna(0))  * mult,
                  "Lrg+Sml Short": (gc("Spec Short") + gc("Non Rep Short").fillna(0)) * mult},
@@ -4742,7 +4759,7 @@ def render_recap_charts(d, report, color, commodity):
 
         # Col 1 bottom — # of Traders
         with c5:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "# of Traders",
                 {"Large Long": gc("Traders Spec Long"), "Large Short": gc("Traders Spec Short")},
                 [C_LONG, C_SHORT]
@@ -4750,7 +4767,7 @@ def render_recap_charts(d, report, color, commodity):
 
         # Col 2 bottom — Commercial gross k lots
         with c6:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Commercial Gross k lots",
                 {"Comm Long": gc("Comm Long") / 1000, "Comm Short": gc("Comm Short") / 1000},
                 [C_LONG, C_SHORT]
@@ -4758,7 +4775,7 @@ def render_recap_charts(d, report, color, commodity):
 
         # Col 3 bottom — Commercial % of OI
         with c7:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Commercial Gross % of OI",
                 {"Comm Long %":  gc("Comm Long")  / oi * 100,
                  "Comm Short %": gc("Comm Short") / oi * 100},
@@ -4767,7 +4784,7 @@ def render_recap_charts(d, report, color, commodity):
 
         # Col 4 bottom — Commercial nominal M USD
         with c8:
-            st.plotly_chart(_line(
+            _chart(_line(
                 f"Commercial Nominal M {ccy}",
                 {"Gross Long": gc("Comm Long") * mult, "Gross Short": gc("Comm Short") * mult},
                 [C_LONG, C_SHORT]
@@ -4779,14 +4796,14 @@ def render_recap_charts(d, report, color, commodity):
 
         # Row 1 — MM
         with c1:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "MM Gross k lots",
                 {"MM Long": gc("MM Long") / 1000, "MM Short": gc("MM Short") / 1000},
                 [C_LONG, C_SHORT]
             ), width='stretch')
 
         with c2:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "MM Gross % of OI",
                 {"MM Long %":  gc("MM Long")  / oi * 100,
                  "MM Short %": gc("MM Short") / oi * 100},
@@ -4794,7 +4811,7 @@ def render_recap_charts(d, report, color, commodity):
             ), width='stretch')
 
         with c3:
-            st.plotly_chart(_line(
+            _chart(_line(
                 f"MM Nominal M {ccy}",
                 {"MM Long": gc("MM Long") * mult, "MM Short": gc("MM Short") * mult},
                 [C_LONG, C_SHORT]
@@ -4802,14 +4819,14 @@ def render_recap_charts(d, report, color, commodity):
 
         # Row 2 — Commercial
         with c4:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Commercial Gross k lots",
                 {"Prod Long": gc("Producer Long") / 1000, "Prod Short": gc("Producer Short") / 1000},
                 [C_LONG, C_SHORT]
             ), width='stretch')
 
         with c5:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Commercial Gross % of OI",
                 {"Prod Long %":  gc("Producer Long")  / oi * 100,
                  "Prod Short %": gc("Producer Short") / oi * 100},
@@ -4817,7 +4834,7 @@ def render_recap_charts(d, report, color, commodity):
             ), width='stretch')
 
         with c6:
-            st.plotly_chart(_line(
+            _chart(_line(
                 f"Commercial Nominal M {ccy}",
                 {"Prod Long": gc("Producer Long") * mult, "Prod Short": gc("Producer Short") * mult},
                 [C_LONG, C_SHORT]
@@ -4825,14 +4842,14 @@ def render_recap_charts(d, report, color, commodity):
 
         # Row 3 — Other Reportables
         with c7:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Other Gross k lots",
                 {"Other Long": gc("Other Long") / 1000, "Other Short": gc("Other Short") / 1000},
                 [C_LONG, C_SHORT]
             ), width='stretch')
 
         with c8:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Other Gross % of OI",
                 {"Other Long %":  gc("Other Long")  / oi * 100,
                  "Other Short %": gc("Other Short") / oi * 100},
@@ -4840,7 +4857,7 @@ def render_recap_charts(d, report, color, commodity):
             ), width='stretch')
 
         with c9:
-            st.plotly_chart(_line(
+            _chart(_line(
                 f"Other Nominal M {ccy}",
                 {"Other Long": gc("Other Long") * mult, "Other Short": gc("Other Short") * mult},
                 [C_LONG, C_SHORT]
@@ -4848,14 +4865,14 @@ def render_recap_charts(d, report, color, commodity):
 
         # Row 4 — Cross-category
         with c10:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "MM Net & Swap Net & Other Net k lots",
                 {"MM Net": mm_net / 1000, "Swap Net": swap_net / 1000, "Other Net": gc("Other Net") / 1000},
                 [C_NET, C_LONG, "#f59e0b"]
             ), width='stretch')
 
         with c11:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "# of Traders",
                 {"MM Long": gc("Traders MM Long"), "MM Short": gc("Traders MM Short"),
                  "Other Long": gc("Traders Other Long"), "Other Short": gc("Traders Other Short")},
@@ -4863,14 +4880,14 @@ def render_recap_charts(d, report, color, commodity):
             ), width='stretch')
 
         with c12:
-            st.plotly_chart(_line(
+            _chart(_line(
                 "Other Spread k lots",
                 {"Other Spread": gc("Other Spread") / 1000},
                 ["#f59e0b"]
             ), width='stretch')
 
     # ── Roll Yield vs Positioning ──────────────────────────────────────────────
-    with st.expander("Roll Yield vs Positioning", expanded=True):
+    with _exp("Roll Yield vs Positioning", expanded=True):
         ry_all = load_roll_yield()
         _ry_key = {"LSU": "W"}.get(commodity, commodity)
         ry_comm = ry_all[ry_all["Commodity"] == _ry_key].copy()
@@ -4951,9 +4968,9 @@ def render_recap_charts(d, report, color, commodity):
 
             col_a, col_b = st.columns(2)
             with col_a:
-                st.plotly_chart(_ry_scatter(ry_vals, short_vals, short_lbl, "Large Spec Short vs Roll Yield"), width='stretch')
+                _chart(_ry_scatter(ry_vals, short_vals, short_lbl, "Large Spec Short vs Roll Yield"), width='stretch')
             with col_b:
-                st.plotly_chart(_ry_scatter(ry_vals, net_vals, net_lbl, "Net Spec vs Roll Yield"), width='stretch')
+                _chart(_ry_scatter(ry_vals, net_vals, net_lbl, "Net Spec vs Roll Yield"), width='stretch')
 
             st.markdown("---")
             if report == "CIT":
@@ -4975,7 +4992,7 @@ def render_recap_charts(d, report, color, commodity):
 
             _ry_sel = st.selectbox("Y-axis element", _ry_opts, key=f"ry_custom_{commodity}")
             _ry_yvals = (merged_ry[_ry_sel] / 1000).values.astype(float)
-            st.plotly_chart(
+            _chart(
                 _ry_scatter(ry_vals, _ry_yvals, f"{_ry_sel} (k lots)", f"{_ry_sel} vs Roll Yield"),
                 width='stretch',
             )
@@ -5050,7 +5067,7 @@ def render_spec_var(commodity: str, df_cot: pd.DataFrame, report: str, color: st
     _ver_lbl  = f"{report} {version_key}" if report == "Disagg" and version_key else report
 
     # ── Expander 2: Spec Book VaR — Net/Long/Short + WoW change ──────────────
-    with st.expander(f"Spec Book VaR — {spec_sel}  ·  {win_sel}D  [{_ver_lbl}]", expanded=True):
+    with _exp(f"Spec Book VaR — {spec_sel}  ·  {win_sel}D  [{_ver_lbl}]", expanded=True):
         vcol = f"vol_{win_sel}"
         if vcol not in var_df.columns or spec_sel not in df_c.columns:
             st.info("Data not available.")
@@ -5103,7 +5120,7 @@ def render_spec_var(commodity: str, df_cot: pd.DataFrame, report: str, color: st
             )
 
     # ── Expander 3: Book VaR timeseries — selected window only ───────────────
-    with st.expander(f"Book VaR — {win_sel}D timeseries  ({spec_sel}) [{_ver_lbl}]", expanded=True):
+    with _exp(f"Book VaR — {win_sel}D timeseries  ({spec_sel}) [{_ver_lbl}]", expanded=True):
         vcol = f"vol_{win_sel}"
         if spec_sel not in df_c.columns or vcol not in var_df.columns:
             st.info("Data not available.")
@@ -5131,10 +5148,10 @@ def render_spec_var(commodity: str, df_cot: pd.DataFrame, report: str, color: st
                 yaxis=dict(**_ax(), title=dict(text="Net VaR ($M)", font=dict(size=9))),
                 xaxis=dict(**_ax(x=True)),
             )
-            st.plotly_chart(fig3, use_container_width=True)
+            _chart(fig3, use_container_width=True)
 
     # ── Expander 4: Long / Short VaR decomposition ────────────────────────────
-    with st.expander(f"Long / Short VaR — {win_sel}D  ({base_name}) [{_ver_lbl}]", expanded=False):
+    with _exp(f"Long / Short VaR — {win_sel}D  ({base_name}) [{_ver_lbl}]", expanded=False):
         vcol = f"vol_{win_sel}"
         has_legs = any(c in df_c.columns for c in [long_col, short_col])
         if not has_legs or vcol not in var_df.columns:
@@ -5171,7 +5188,7 @@ def render_spec_var(commodity: str, df_cot: pd.DataFrame, report: str, color: st
                 yaxis=dict(**_ax(), title=dict(text="VaR ($M)", font=dict(size=9))),
                 xaxis=dict(**_ax(x=True)),
             )
-            st.plotly_chart(fig4, use_container_width=True)
+            _chart(fig4, use_container_width=True)
 
     # ── Expander 5: Cross-Commodity Comparison ────────────────────────────────
     with st.expander("Cross-Commodity Comparison", expanded=False):
@@ -5700,7 +5717,7 @@ def render_pain_trade(d, commodity, report, color, is_options):
     fig1.update_yaxes(title_text="Rollex Price", secondary_y=True,
                       showgrid=False, tickfont=dict(size=9))
 
-    st.plotly_chart(fig1, width='stretch')
+    _chart(fig1, width='stretch')
     st.markdown("<hr>", unsafe_allow_html=True)
 
     # ── VISUAL 2 — Rollex (Y) vs COT breakdown (X) ───────────────────────────
@@ -5871,10 +5888,10 @@ def render_pain_trade(d, commodity, report, color, is_options):
     )
     _l, _ch, _r = st.columns([0.125, 0.75, 0.125])
     with _ch:
-        st.plotly_chart(fig2, width='stretch')
+        _chart(fig2, width='stretch')
 
     # ── Rollex bucket table ───────────────────────────────────────────────────
-    with st.expander("Positioning by Rollex Level", expanded=False):
+    with _exp("Positioning by Rollex Level", expanded=False):
         # Compact controls row: Step | Weeks | Threshold Rollex radio
         _c_step, _c_wks, _c_radio = st.columns([0.12, 0.12, 0.76])
         with _c_wks:
@@ -6147,15 +6164,50 @@ def _dist_zscore(series, years):
         return np.nan
     return float((series.iloc[-1] - window.mean()) / sd)
 
-def _dist_style_z(v):
+_ZBAR_CAP = 3.0   # bars saturate at ±3σ
+
+_ZBAR_CSS = """<style>
+.zbt{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:.8rem;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fff}
+.zbt th{background:#f8fafc;color:#64748b;font-weight:600;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;
+  padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:center}
+.zbt th:first-child{text-align:left;width:30%;padding-left:12px}
+.zbt td{padding:7px 8px;border-bottom:1px solid #f1f5f9}
+.zbt tr:last-child td{border-bottom:none}
+.zbt tr:hover td{background:#fafbfc}
+.zbt .zn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#1f2937;font-weight:500;padding-left:12px}
+.zbt .zd{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:middle}
+.zbt .zt{position:relative;height:20px;background:#f5f6f8;border-radius:5px}
+.zbt .zt::after{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#cbd5e1}
+.zbt .zb{position:absolute;top:0;bottom:0}
+.zbt .zv{position:absolute;top:50%;transform:translateY(-50%);font-size:.74rem;line-height:1;font-variant-numeric:tabular-nums;color:#374151;white-space:nowrap}
+.zbt .zx{font-weight:700}
+.zleg{font-size:.7rem;color:#94a3b8;margin-top:6px}
+</style>"""
+
+def _dist_zbar_cell(v):
+    """Diverging bar from the centre line; the value sits in the opposite half."""
     if pd.isna(v):
-        return ""
-    v = max(-3, min(3, v))
-    if v >= 0:
-        r, g, b = 255 - int(v/3*105), 235 - int(v/3*20), 130
-    else:
-        r, g, b = 250, 150 + int((v+3)/3*85), 120 + int((v+3)/3*60)
-    return f"background-color:rgb({r},{g},{b});color:#1a1a2e"
+        return "<td><div class='zt'><span class='zv' style='left:50%;transform:translate(-50%,-50%);color:#9ca3af'>—</span></div></td>"
+    frac = min(abs(v), _ZBAR_CAP) / _ZBAR_CAP * 50          # % of track width, from centre
+    pos, strong = v >= 0, abs(v) >= 2
+    clr = ("#16a34a" if strong else "#86efac") if pos else ("#dc2626" if strong else "#fca5a5")
+    bar = (f"left:50%;width:{frac:.1f}%;border-radius:0 5px 5px 0" if pos else
+           f"right:50%;width:{frac:.1f}%;border-radius:5px 0 0 5px")
+    lbl = "right:calc(50% + 6px)" if pos else "left:calc(50% + 6px)"
+    txt = ("color:#15803d;font-weight:700" if pos else "color:#b91c1c;font-weight:700") if strong else ""
+    return (f"<td><div class='zt'><div class='zb' style='{bar};background:{clr}'></div>"
+            f"<span class='zv' style='{lbl};{txt}'>{v:+.2f}</span></div></td>")
+
+def _dist_zbar_table(rows):
+    """rows: {commodity_code: {years: z}} → HTML diverging-bar table."""
+    head = "<tr><th>Commodity</th>" + "".join(f"<th>{y}y</th>" for y in DIST_LOOKBACKS) + "</tr>"
+    body = ""
+    for code, zs in rows.items():
+        name = COMM_NAMES[code].split(" : ")[1]
+        body += (f"<tr><td class='zn'><span class='zd' style='background:{COMM_COLORS[code]}'></span>{name}</td>"
+                 + "".join(_dist_zbar_cell(zs.get(y, np.nan)) for y in DIST_LOOKBACKS) + "</tr>")
+    return f"<table class='zbt'><thead>{head}</thead><tbody>{body}</tbody></table>"
 
 def _dist_auto_bin(series_list, target_bins=60):
     """Round-ish bin width from the combined range of the given series."""
@@ -6242,7 +6294,7 @@ def render_distribution(full, commodity, report):
                       margin=dict(l=30, r=30, t=70, b=40), font=_DIST_FONT)
     fig.update_yaxes(title_text=y_title, title_font_size=10, showgrid=True, gridcolor="rgba(0,0,0,0.06)")
     fig.update_xaxes(showgrid=False)
-    st.plotly_chart(fig, width='stretch')
+    _chart(fig, width='stretch')
     st.caption(f"Distribution of {category} Net/Long/Short — level and week-over-week change — over the "
                f"selected window. Dashed line marks the latest data point ({d['Date'].max():%d %b %Y}).")
 
@@ -6271,7 +6323,7 @@ def render_distribution(full, commodity, report):
     fig_px.update_xaxes(title_text="Weekly Price Change %", showgrid=False)
     px_col, _ = st.columns(2)
     with px_col:
-        st.plotly_chart(fig_px, width='stretch')
+        _chart(fig_px, width='stretch')
     st.caption("Distribution of the Rollex (roll-adjusted) price's week-over-week % change over the same "
                "study window as the positioning histograms. Solid line marks the latest value.")
 
@@ -6291,20 +6343,19 @@ def render_zscore_matrix():
         if dc.empty or net_col not in dc.columns:
             continue
         lvl = pd.to_numeric(dc.set_index("Date")[net_col], errors="coerce").dropna()
-        name = COMM_NAMES[cmm].split(" : ")[1]
-        level_rows[name] = {y: _dist_zscore(lvl, y) for y in DIST_LOOKBACKS}
-        chg_rows[name]   = {y: _dist_zscore(lvl.diff().dropna(), y) for y in DIST_LOOKBACKS}
-    level_df = pd.DataFrame(level_rows).T.reindex(columns=DIST_LOOKBACKS)
-    chg_df   = pd.DataFrame(chg_rows).T.reindex(columns=DIST_LOOKBACKS)
-    level_df.columns = chg_df.columns = [f"{y}y" for y in DIST_LOOKBACKS]
+        level_rows[cmm] = {y: _dist_zscore(lvl, y) for y in DIST_LOOKBACKS}
+        chg_rows[cmm]   = {y: _dist_zscore(lvl.diff().dropna(), y) for y in DIST_LOOKBACKS}
 
-    m1, m2 = st.columns(2)
+    st.markdown(_ZBAR_CSS, unsafe_allow_html=True)
+    m1, m2 = st.columns(2, gap="large")
     with m1:
         st.markdown(f"**{category} Net — Z-score**")
-        st.dataframe(level_df.style.map(_dist_style_z).format("{:.2f}", na_rep="—"), width='stretch')
+        st.markdown(_dist_zbar_table(level_rows), unsafe_allow_html=True)
     with m2:
         st.markdown(f"**{category} Weekly Change — Z-score**")
-        st.dataframe(chg_df.style.map(_dist_style_z).format("{:.2f}", na_rep="—"), width='stretch')
+        st.markdown(_dist_zbar_table(chg_rows), unsafe_allow_html=True)
+    st.markdown("<div class='zleg'>Bars run from the centre line (z = 0): green = above the window mean, "
+                "red = below. Scaled to ±3σ; darker bar and bold value = |z| ≥ 2.</div>", unsafe_allow_html=True)
 
 def _view_distribution():
     full = raw[(raw["Commodity"] == commodity) & (raw["Crop"] == "All")] if "Crop" in raw.columns \
