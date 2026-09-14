@@ -289,6 +289,25 @@ def load_rollex(commodity: str) -> pd.DataFrame:
     return df.sort_values("Date").reset_index(drop=True)
 
 
+# GSCI single-commodity sub-index price for the 3 metals — Gold/Silver/Copper
+# have no Rollex file (no roll-adjusted futures build for them in this repo),
+# so their weekly price move in the Z-Score Matrix comes from here instead.
+# Snapshot copied from the Cross Section project's own daily GSCI ingest
+# (Non Fundamental/Cross Section/ingest.py, RICs .SPGSGCP/.SPGSSIP/.SPGSICP)
+# on 2026-09-14 — it is NOT kept current by this app's own automator, so it
+# will drift stale; re-export it from that ingest's prices.parquet periodically.
+GSCI_METALS_FILE = DB_DIR / "gsci_metals.parquet"
+
+@st.cache_data(ttl=600)
+def load_gsci_metal(commodity: str) -> pd.DataFrame:
+    if commodity not in ("GC", "SI", "HG") or not GSCI_METALS_FILE.exists():
+        return pd.DataFrame(columns=["Date", "gsci_px"])
+    df = pd.read_parquet(GSCI_METALS_FILE)
+    df = df[df["Commodity"] == commodity][["Date", "gsci_px"]]
+    df["Date"] = pd.to_datetime(df["Date"])
+    return df.sort_values("Date").reset_index(drop=True)
+
+
 @st.cache_data(ttl=600)
 def load_rollex_ohlc(commodity: str) -> pd.DataFrame:
     """Daily OHLC continuous price, for the COT nowcast candlestick charts."""
@@ -6357,71 +6376,66 @@ def render_distribution(full, commodity, report):
     st.caption("Distribution of the Rollex (roll-adjusted) price's week-over-week % change over the same "
                "study window as the positioning histograms. Solid line marks the latest value.")
 
-# Default category is different per basis — CIT's US-style combined leg vs
-# Disagg's own combined leg — so each basis remembers its own selectbox state.
-_MATRIX_DEFAULT_CAT = {"CIT": "Large Spec + Index + Non-Rep", "Disagg": "MM + Other + Non-Rep"}
+# Fixed default measure per report family — each is that family's own "every
+# category combined" net position, so every commodity gets the fullest-possible
+# spec read on its own native report rather than a partial one:
+#   CIT (KC/CC/SB/CT)              -> Large Spec + Index + Non-Rep  = Combined Spec Net
+#   Disagg (RC/LCC/LSU/GC/SI/HG)   -> MM + Other + Non-Rep + Swap   = Combined Spec Net
+# Both happen to already be called "Combined Spec Net" in their own dataframe.
+_MATRIX_NET_COL = "Combined Spec Net"
+
+def _matrix_price_chg(dates: pd.Series, commodity: str) -> float:
+    """Latest weekly (Tuesday COT date to Tuesday COT date) % price change —
+    Rollex (roll-adjusted futures) where this repo has it, else the GSCI
+    single-commodity sub-index for the 3 metals."""
+    if commodity in ("GC", "SI", "HG"):
+        px_df = load_gsci_metal(commodity).rename(columns={"gsci_px": "Px"})
+    else:
+        px_df = _inject_rollex(pd.DataFrame({"Date": dates}), commodity)
+    if "Px" not in px_df.columns:
+        return np.nan
+    px = pd.to_numeric(px_df.set_index("Date")["Px"], errors="coerce").dropna()
+    chg = px.pct_change().dropna()
+    return float(chg.iloc[-1]) * 100 if not chg.empty else np.nan
 
 @st.fragment
 def render_zscore_matrix(commodity=None, report=None):
-    st.caption(
-        "Every single commodity side by side on **one common report basis** (chosen below), "
-        "so commodities that don't share a CIT report (RC/LCC/LSU, metals) can still be "
-        "compared — this is why it uses its own Report/Category controls instead of the "
-        "sidebar's, which are set per-commodity and would leave those blank."
-    )
-    b1, b2 = st.columns([1, 2])
-    with b1:
-        basis_default = "CIT" if report == "CIT" else "Disagg"
-        basis = st.radio("Report basis (matrix)", ["CIT", "Disagg"],
-                         index=["CIT", "Disagg"].index(basis_default),
-                         horizontal=True, key="dist_matrix_basis")
-    if basis == "CIT":
-        src, cat_map, comms = load_cit(), DIST_CIT_CATS, [c for c in DIST_MATRIX_COMMS if c in CIT_COMMS]
-    else:
-        src, cat_map, comms = _dist_prepare(load_disagg("Fut")), DIST_DISAGG_CATS, DIST_MATRIX_COMMS
-    if "Crop" in src.columns:
-        src = src[src["Crop"] == "All"]
+    cit_df   = load_cit()
+    disagg   = _dist_prepare(load_disagg("Fut"))
+    disagg   = disagg[disagg["Crop"] == "All"] if "Crop" in disagg.columns else disagg
 
-    with b2:
-        cats = list(cat_map)
-        default_cat = _MATRIX_DEFAULT_CAT[basis]
-        category = st.selectbox("Category (matrix)", cats, key=f"dist_matrix_cat_{basis}",
-                                index=cats.index(default_cat) if default_cat in cats else 0)
-    net_col = cat_map[category]["net"]
-    if basis == "CIT":
-        st.caption("KC / CC / SB / CT only — RC, LCC, LSU and the metals have no CIT (Index Traders) report.")
-    st.caption(f"Latest COT date: **{src['Date'].max():%d %b %Y}**.")
+    st.markdown(
+        "**Using each commodity's fullest combined spec read on its own report: "
+        "Large Spec + Index + Non-Rep on CIT (KC/CC/SB/CT) &nbsp;·&nbsp; "
+        "MM + Other + Non-Rep + Swap on Disaggregated (RC/LCC/LSU/Gold/Silver/Copper).**"
+    )
 
     level_rows, chg_rows, price_rows = {}, {}, {}
-    for cmm in comms:
+    for cmm in DIST_MATRIX_COMMS:
+        src = cit_df if cmm in CIT_COMMS else disagg
         dc = src[src["Commodity"] == cmm].sort_values("Date")
-        if dc.empty or net_col not in dc.columns:
+        if dc.empty or _MATRIX_NET_COL not in dc.columns:
             continue
-        lvl = pd.to_numeric(dc.set_index("Date")[net_col], errors="coerce").dropna()
+        lvl = pd.to_numeric(dc.set_index("Date")[_MATRIX_NET_COL], errors="coerce").dropna()
+        if lvl.empty:
+            continue
         level_rows[cmm] = {y: _dist_zscore(lvl, y) for y in DIST_LOOKBACKS}
         chg_rows[cmm]   = {y: _dist_zscore(lvl.diff().dropna(), y) for y in DIST_LOOKBACKS}
-        # Tuesday-to-Tuesday price move: Rollex (roll-adjusted) price aligned to
-        # this commodity's own COT report dates, latest week's % change.
-        # No Rollex file (e.g. metals) -> _inject_rollex is a no-op, no "Px" added.
-        px_df = _inject_rollex(dc[["Date"]], cmm)
-        if "Px" in px_df.columns:
-            px = pd.to_numeric(px_df.set_index("Date")["Px"], errors="coerce").dropna()
-            chg_pct = px.pct_change().dropna()
-            if not chg_pct.empty:
-                price_rows[cmm] = float(chg_pct.iloc[-1]) * 100
+        price_rows[cmm] = _matrix_price_chg(dc["Date"], cmm)
 
     st.markdown(_ZBAR_CSS, unsafe_allow_html=True)
     m1, m2 = st.columns(2, gap="large")
     with m1:
-        st.markdown(f"**{category} Net — Z-score**")
+        st.markdown("**Combined Spec Net — Z-score**")
         st.markdown(_dist_zbar_table(level_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
     with m2:
-        st.markdown(f"**{category} Weekly Change — Z-score**")
+        st.markdown("**Combined Spec Weekly Change — Z-score**")
         st.markdown(_dist_zbar_table(chg_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
     st.markdown("<div class='zleg'>Z-score bars run from the centre line (z = 0): green = above the window "
                 "mean, red = below — scaled to ±3σ, darker/bold at |z| ≥ 2. The right-most Px Δ% column is "
-                "each commodity's own most recent weekly price move (Tuesday COT date to Tuesday COT date), "
-                "scaled to the largest move on screen.</div>", unsafe_allow_html=True)
+                "each commodity's own most recent weekly price move (Tuesday COT date to Tuesday COT date; "
+                "GSCI sub-index for Gold/Silver/Copper, Rollex for the rest), scaled to the largest move on "
+                "screen.</div>", unsafe_allow_html=True)
 
 def _view_distribution():
     full = raw[(raw["Commodity"] == commodity) & (raw["Crop"] == "All")] if "Crop" in raw.columns \
