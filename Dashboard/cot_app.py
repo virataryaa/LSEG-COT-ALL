@@ -1888,7 +1888,8 @@ _RECAP_COL_SUBSEP = {
 }
 
 def _recap_html(df, signed=False, change_table=False, scroll=False, signed_groups=None,
-                pct_groups=None, pct_subcols=None, signed_rows=None, z_rows=None, max_height=None):
+                pct_groups=None, pct_subcols=None, signed_rows=None, z_rows=None, max_height=None,
+                decimals=1):
     if df.empty: return ""
     cols = list(df.columns)
     # Build group spans
@@ -1954,7 +1955,10 @@ def _recap_html(df, signed=False, change_table=False, scroll=False, signed_group
                           or (signed_groups and isinstance(c, tuple) and c[0] in signed_groups))
             use_pct = ((pct_groups and isinstance(c, tuple) and c[0] in pct_groups) or
                        (pct_subcols and isinstance(c, tuple) and c in pct_subcols))
-            fmt = ".2f" if is_z_row else ".1f"
+            # Price always keeps a decimal — rounding a level like 289.95 to
+            # a whole number loses real precision "lots" rounding doesn't.
+            is_price = isinstance(c, tuple) and c[0] == "Rollex Px"
+            fmt = ".2f" if is_z_row else (".1f" if is_price else f".{decimals}f")
             if use_signed:
                 txt = f"{v:+{fmt}}"
                 cls = "rpos" if v > 0 else ("rneg" if v < 0 else "")
@@ -2341,7 +2345,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
                                 max_height=148), unsafe_allow_html=True)
 
     with _exp("Historical positions  ·  k lots", expanded=True):
-        st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT), unsafe_allow_html=True)
+        st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT, decimals=0), unsafe_allow_html=True)
 
     with _exp("Weekly change  ·  k lots", expanded=True):
         chg = view.diff(-1)
@@ -4002,7 +4006,7 @@ def render_combined(commodity, start_date, end_date, color):
         with _exp("Historical positions  ·  k lots", expanded=True):
             disp = body_df.iloc[:20].copy()
             disp.index = [f"{dt.day}-{dt.strftime('%b-%y')}" if hasattr(dt,'day') else str(dt) for dt in disp.index]
-            st.markdown(_recap_html(disp, scroll=True), unsafe_allow_html=True)
+            st.markdown(_recap_html(disp, scroll=True, decimals=0), unsafe_allow_html=True)
 
         with _exp("Weekly change  ·  k lots", expanded=True):
             chg = body_df.diff(-1).iloc[:20].copy()
