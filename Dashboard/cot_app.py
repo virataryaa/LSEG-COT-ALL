@@ -6393,13 +6393,21 @@ def render_distribution(full, commodity, report):
     st.caption("Distribution of the Rollex (roll-adjusted) price's week-over-week % change over the same "
                "study window as the positioning histograms. Solid line marks the latest value.")
 
-# Fixed default measure per report family — each is that family's own "every
-# category combined" net position, so every commodity gets the fullest-possible
-# spec read on its own native report rather than a partial one:
-#   CIT (KC/CC/SB/CT)              -> Large Spec + Index + Non-Rep  = Combined Spec Net
-#   Disagg (RC/LCC/LSU/GC/SI/HG)   -> MM + Other + Non-Rep + Swap   = Combined Spec Net
-# Both happen to already be called "Combined Spec Net" in their own dataframe.
-_MATRIX_NET_COL = "Combined Spec Net"
+# Per-basis spec-element choices — each a progressively wider net position on
+# that basis's own report. Defaults are each basis's fullest read (excl. the
+# Disagg Swap leg, which isn't offered as a matrix option at all).
+_CIT_CAT_OPTS = {
+    "Large Spec":                  "Spec Net",
+    "Large Spec + Non Rep":        "Spec+NonRep Net",
+    "Large Spec + Non Rep + Index":"Combined Spec Net",
+}
+_DAG_CAT_OPTS = {
+    "MM":                     "MM Net",
+    "MM + Non Rep":           "MM+NonRep Net",
+    "MM + Non Rep + Other":   "MM+Other+NonRep Net",
+}
+_CIT_CAT_DEFAULT = "Large Spec + Non Rep + Index"
+_DAG_CAT_DEFAULT = "MM + Non Rep + Other"
 
 def _matrix_price_chg(dates: pd.Series, commodity: str) -> float:
     """Latest weekly (Tuesday COT date to Tuesday COT date) % price change —
@@ -6424,19 +6432,35 @@ def render_zscore_matrix(commodity=None, report=None):
     latest_cit, latest_dag = cit_df["Date"].max(), disagg["Date"].max()
     date_str = (f"Report date: **{latest_cit:%d %b %Y}**" if latest_cit == latest_dag else
                 f"Report date: **{latest_cit:%d %b %Y}** (CIT) / **{latest_dag:%d %b %Y}** (Disagg)")
+
+    st.markdown("<style>.zbt-sel div[data-testid='stSelectbox']{font-size:.72rem}"
+                ".zbt-sel label p{font-size:.68rem!important;color:#6b7280!important}</style>",
+               unsafe_allow_html=True)
+    with st.container(key="zbt_sel"):
+        st.markdown("<div class='zbt-sel'>", unsafe_allow_html=True)
+        s1, s2, _sp = st.columns([1.1, 1.3, 3])
+        with s1:
+            cit_cat = st.selectbox("CIT spec", list(_CIT_CAT_OPTS), key="zbt_cit_cat",
+                                   index=list(_CIT_CAT_OPTS).index(_CIT_CAT_DEFAULT))
+        with s2:
+            dag_cat = st.selectbox("Disaggregated spec", list(_DAG_CAT_OPTS), key="zbt_dag_cat",
+                                   index=list(_DAG_CAT_OPTS).index(_DAG_CAT_DEFAULT))
+        st.markdown("</div>", unsafe_allow_html=True)
+    cit_col, dag_col = _CIT_CAT_OPTS[cit_cat], _DAG_CAT_OPTS[dag_cat]
+
     st.markdown(
-        "**Large Spec + Index + Non-Rep on CIT (KC/CC/SB/CT) &nbsp;·&nbsp; "
-        "MM + Other + Non-Rep + Swap on Disaggregated (RC/LCC/LSU/Gold/Silver/Copper).**"
+        f"**{cit_cat} on CIT (KC/CC/SB/CT) &nbsp;·&nbsp; "
+        f"{dag_cat} on Disaggregated (RC/LCC/LSU/Gold/Silver/Copper).**"
         f"&nbsp;&nbsp;&nbsp;{date_str}"
     )
 
     level_rows, chg_rows, price_rows = {}, {}, {}
     for cmm in DIST_MATRIX_COMMS:
-        src = cit_df if cmm in CIT_COMMS else disagg
+        src, net_col = (cit_df, cit_col) if cmm in CIT_COMMS else (disagg, dag_col)
         dc = src[src["Commodity"] == cmm].sort_values("Date")
-        if dc.empty or _MATRIX_NET_COL not in dc.columns:
+        if dc.empty or net_col not in dc.columns:
             continue
-        lvl = pd.to_numeric(dc.set_index("Date")[_MATRIX_NET_COL], errors="coerce").dropna()
+        lvl = pd.to_numeric(dc.set_index("Date")[net_col], errors="coerce").dropna()
         if lvl.empty:
             continue
         level_rows[cmm] = {y: _dist_zscore(lvl, y) for y in DIST_LOOKBACKS}
@@ -6446,16 +6470,11 @@ def render_zscore_matrix(commodity=None, report=None):
     st.markdown(_ZBAR_CSS, unsafe_allow_html=True)
     m1, m2 = st.columns(2, gap="large")
     with m1:
-        st.markdown("**Combined Spec Net — Z-score**")
+        st.markdown("**Net — Z-score**")
         st.markdown(_dist_zbar_table(level_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
     with m2:
-        st.markdown("**Combined Spec Weekly Change — Z-score**")
+        st.markdown("**Weekly Change — Z-score**")
         st.markdown(_dist_zbar_table(chg_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
-    st.markdown("<div class='zleg'>Z-score bars run from the centre line (z = 0): green = above the window "
-                "mean, red = below — scaled to ±3σ, darker/bold at |z| ≥ 2. The right-most Px Δ% column is "
-                "each commodity's own most recent weekly price move (Tuesday COT date to Tuesday COT date; "
-                "GSCI sub-index for Gold/Silver/Copper, Rollex for the rest), scaled to the largest move on "
-                "screen.</div>", unsafe_allow_html=True)
 
 def _view_distribution():
     full = raw[(raw["Commodity"] == commodity) & (raw["Crop"] == "All")] if "Crop" in raw.columns \
