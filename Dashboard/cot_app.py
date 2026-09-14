@@ -4518,8 +4518,9 @@ def _render_dynamic_proximity(comm, df_comm):
 
 
 @st.fragment
-def render_spec_proximity(start_date, end_date):
-    """Spec Proximity — 3x3 grid of compact tables, one per commodity."""
+def render_spec_proximity(start_date, end_date, commodity=None):
+    """Spec Proximity — the sidebar commodity's table by default, or the 3x3
+    grid of all softs when 'All commodities' is chosen."""
     # ── Title bar with both formulas ──────────────────────────────────────────
     st.markdown(
         "<div style='background:#581c54;color:white;padding:10px 16px;border-radius:6px;"
@@ -4541,11 +4542,18 @@ def render_spec_proximity(start_date, end_date):
             key="sp_window",
             help="How far back to search for proximity matches. Each table shows last 15 weeks from this window.",
         )
+    with _c2:
+        scope = st.radio("Show", ["Selected commodity", "All commodities"],
+                         index=0, horizontal=True, key="sp_scope") if commodity else "All commodities"
     study_weeks = int(window_lbl.replace("w", ""))
 
     # Load both reports once
     cit_df = load_cit()
     dag_df = load_disagg("F&O")
+
+    if scope.startswith("Selected"):
+        _render_one_proximity_table(commodity, study_weeks, cit_df, dag_df, start_date, end_date)
+        return
 
     # ── 3 x 3 grid ────────────────────────────────────────────────────────────
     for row_comms in _GRID_ROWS:
@@ -6199,13 +6207,16 @@ def _dist_zbar_cell(v):
     return (f"<td><div class='zt'><div class='zb' style='{bar};background:{clr}'></div>"
             f"<span class='zv' style='{lbl};{txt}'>{v:+.2f}</span></div></td>")
 
-def _dist_zbar_table(rows):
-    """rows: {commodity_code: {years: z}} → HTML diverging-bar table."""
+def _dist_zbar_table(rows, selected=None):
+    """rows: {commodity_code: {years: z}} → HTML diverging-bar table; the sidebar commodity's row is highlighted."""
     head = "<tr><th>Commodity</th>" + "".join(f"<th>{y}y</th>" for y in DIST_LOOKBACKS) + "</tr>"
     body = ""
     for code, zs in rows.items():
         name = COMM_NAMES[code].split(" : ")[1]
-        body += (f"<tr><td class='zn'><span class='zd' style='background:{COMM_COLORS[code]}'></span>{name}</td>"
+        sel = code == selected
+        row_style = f" style='background:{COMM_COLORS[code]}14;box-shadow:inset 3px 0 0 {COMM_COLORS[code]}'" if sel else ""
+        name_html = f"<b>{name}</b>" if sel else name
+        body += (f"<tr{row_style}><td class='zn'><span class='zd' style='background:{COMM_COLORS[code]}'></span>{name_html}</td>"
                  + "".join(_dist_zbar_cell(zs.get(y, np.nan)) for y in DIST_LOOKBACKS) + "</tr>")
     return f"<table class='zbt'><thead>{head}</thead><tbody>{body}</tbody></table>"
 
@@ -6328,7 +6339,7 @@ def render_distribution(full, commodity, report):
                "study window as the positioning histograms. Solid line marks the latest value.")
 
 @st.fragment
-def render_zscore_matrix():
+def render_zscore_matrix(commodity=None):
     fut = _dist_prepare(load_disagg("Fut"))
     fut = fut[fut["Crop"] == "All"]
     st.caption("All single commodities on the Disaggregated **Futures-only** report, so RC/LCC/LSU "
@@ -6350,10 +6361,10 @@ def render_zscore_matrix():
     m1, m2 = st.columns(2, gap="large")
     with m1:
         st.markdown(f"**{category} Net — Z-score**")
-        st.markdown(_dist_zbar_table(level_rows), unsafe_allow_html=True)
+        st.markdown(_dist_zbar_table(level_rows, commodity), unsafe_allow_html=True)
     with m2:
         st.markdown(f"**{category} Weekly Change — Z-score**")
-        st.markdown(_dist_zbar_table(chg_rows), unsafe_allow_html=True)
+        st.markdown(_dist_zbar_table(chg_rows, commodity), unsafe_allow_html=True)
     st.markdown("<div class='zleg'>Bars run from the centre line (z = 0): green = above the window mean, "
                 "red = below. Scaled to ±3σ; darker bar and bold value = |z| ≥ 2.</div>", unsafe_allow_html=True)
 
@@ -6402,9 +6413,9 @@ VIEWS = {
     "Specs in VaR":       lambda: _tab_spec_var(commodity, df, report, color, start_date, end_date),
     "CIT vs Disagg":      _view_comparison,
     "Pain Trade Monitor": lambda: _tab_pain_trade(df, commodity, report, color, is_options),
-    "Spec Proximity":     lambda: render_spec_proximity(start_date, end_date),
+    "Spec Proximity":     lambda: render_spec_proximity(start_date, end_date, commodity),
     "Distribution":       _view_distribution,
-    "Z-Score Matrix":     render_zscore_matrix,
+    "Z-Score Matrix":     lambda: render_zscore_matrix(commodity),
 }
 
 # "buttons": segmented selector — only the chosen view is built on each rerun.
