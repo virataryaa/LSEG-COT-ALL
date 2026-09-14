@@ -6404,10 +6404,13 @@ def render_zscore_matrix(commodity=None, report=None):
     disagg   = _dist_prepare(load_disagg("Fut"))
     disagg   = disagg[disagg["Crop"] == "All"] if "Crop" in disagg.columns else disagg
 
+    latest_cit, latest_dag = cit_df["Date"].max(), disagg["Date"].max()
+    date_str = (f"Report date: **{latest_cit:%d %b %Y}**" if latest_cit == latest_dag else
+                f"Report date: **{latest_cit:%d %b %Y}** (CIT) / **{latest_dag:%d %b %Y}** (Disagg)")
     st.markdown(
-        "**Using each commodity's fullest combined spec read on its own report: "
-        "Large Spec + Index + Non-Rep on CIT (KC/CC/SB/CT) &nbsp;·&nbsp; "
+        "**Large Spec + Index + Non-Rep on CIT (KC/CC/SB/CT) &nbsp;·&nbsp; "
         "MM + Other + Non-Rep + Swap on Disaggregated (RC/LCC/LSU/Gold/Silver/Copper).**"
+        f"&nbsp;&nbsp;&nbsp;{date_str}"
     )
 
     level_rows, chg_rows, price_rows = {}, {}, {}
