@@ -456,21 +456,29 @@ def show_table(d: pd.DataFrame, pos_cols: list, chg_cols: list, label: str, n=60
 # ══════════════════════════════════════════════════════════════════════════════
 # CHART FUNCTIONS
 # ══════════════════════════════════════════════════════════════════════════════
-def _add_price(fig, d, secondary_y=True, legendonly=False):
-    if "Px" not in d.columns or d["Px"].isna().all(): return
+def rollex_toggle(key):
+    """Per-tab switch for the Rollex Px overlay. Off = no price trace AND no
+    right axis — a legend-hidden trace still leaves an empty secondary axis
+    (default -1..4 range) that doesn't line up with the left scale."""
+    return st.toggle("Show Rollex Px", value=False, key=key)
+
+def _has_price(d):
+    return "Px" in d.columns and not d["Px"].isna().all()
+
+def _add_price(fig, d, secondary_y=True):
     fig.add_trace(go.Scatter(
         x=d["Date"], y=d["Px"], name="Rollex Px",
         line=dict(color=C_PRICE, width=1.2, dash="dot"), opacity=0.65,
-        visible="legendonly" if legendonly else True,
         hovertemplate="<b>%{x|%d %b %Y}</b><br>Rollex Px: %{y:.2f}<extra></extra>",
     ), secondary_y=secondary_y)
 
-def timeseries(d, series, title, ylabel, height=360, price=True, px_legendonly=False):
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+def timeseries(d, series, title, ylabel, height=360, price=True):
+    price = price and _has_price(d)
+    fig = make_subplots(specs=[[{"secondary_y": price}]])
     for s in series:
         fig.add_trace(s["trace"], secondary_y=False)
     if price:
-        _add_price(fig, d, secondary_y=True, legendonly=px_legendonly)
+        _add_price(fig, d, secondary_y=True)
     fig.update_layout(
         **_BASE, height=height,
         title=dict(text=title, font=dict(size=12, color="#333"), x=0),
@@ -480,8 +488,9 @@ def timeseries(d, series, title, ylabel, height=360, price=True, px_legendonly=F
         xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
     )
     fig.update_yaxes(title_text=ylabel, title_font_size=10, secondary_y=False, **_ax())
-    fig.update_yaxes(title_text="Rollex Px", title_font_size=10, secondary_y=True,
-                     showgrid=False, tickfont=dict(size=10, color=C_PRICE))
+    if price:
+        fig.update_yaxes(title_text="Rollex Px", title_font_size=10, secondary_y=True,
+                         showgrid=False, tickfont=dict(size=10, color=C_PRICE))
     return fig
 
 def bars_weekly(d, col, title, n=13):
@@ -505,7 +514,7 @@ def bars_weekly(d, col, title, n=13):
     )
     return fig
 
-def bars_combined(d, lc, sc, nc, title, color, n=13):
+def bars_combined(d, lc, sc, nc, title, color, n=13, price=True):
     DARK_GREEN  = "#1a6b1a"
     LIGHT_GREEN = "#7dce7d"
     DARK_RED    = "#8b0000"
@@ -524,7 +533,8 @@ def bars_combined(d, lc, sc, nc, title, color, n=13):
     else:
         long_add = long_liq = short_add = short_cover = None
 
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    price = price and "Px" in d.columns
+    fig = make_subplots(specs=[[{"secondary_y": price}]])
 
     if long_add is not None:
         for arr, name, clr in [
@@ -538,7 +548,7 @@ def bars_combined(d, lc, sc, nc, title, color, n=13):
                 hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>{name}: %{{y:+.2f}}k<extra></extra>"),
                 secondary_y=False)
 
-    if "Px" in d.columns:
+    if price:
         px_vals = np.asarray(tail["Px"].iloc[1:], dtype=float)
         fig.add_trace(go.Scatter(x=dates, y=px_vals, name="Rollex Px", mode="lines",
             line=dict(color=C_PRICE, width=1.8),
@@ -553,8 +563,9 @@ def bars_combined(d, lc, sc, nc, title, color, n=13):
         xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
         bargap=0.12)
     fig.update_yaxes(title_text="k lots", title_font_size=10, secondary_y=False, **_ax())
-    fig.update_yaxes(title_text="Rollex Px", title_font_size=10, secondary_y=True,
-                     showgrid=False, tickfont=dict(size=10, color=C_PRICE))
+    if price:
+        fig.update_yaxes(title_text="Rollex Px", title_font_size=10, secondary_y=True,
+                         showgrid=False, tickfont=dict(size=10, color=C_PRICE))
     return fig
 
 
@@ -774,6 +785,8 @@ def render_spec(d, report, color):
             with ch:
                 st.plotly_chart(seasonal(d, col, clr, f"{cat} {lbl}"), width='stretch')
 
+    show_px = rollex_toggle("spec_show_px")
+
     # Combined timeseries — Long, Short, Net all in selected unit + Price secondary
     ylabel = "k lots" if unit == "k lots" else "% of OI"
     suffix = "k" if unit == "k lots" else "%"
@@ -796,7 +809,7 @@ def render_spec(d, report, color):
             line=dict(color="#94a3b8", width=1.4, dash="dot"),
             visible="legendonly",
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Spread: %{{y:.1f}}{suffix}<extra></extra>")})
-    st.plotly_chart(timeseries(d, traces, f"{cat}  ·  {ylabel}", ylabel, px_legendonly=True), width='stretch')
+    st.plotly_chart(timeseries(d, traces, f"{cat}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
 
     # % of Total OI chart
     oi = d["Total OI"].replace(0, np.nan) if "Total OI" in d.columns else None
@@ -822,10 +835,10 @@ def render_spec(d, report, color):
                 hovertemplate="<b>%{x|%d %b %Y}</b><br>Spread: %{y:.1f}%<extra></extra>")})
         if pct_traces:
             st.caption("Denominator: All Crop Total OI")
-            st.plotly_chart(timeseries(d, pct_traces, f"{cat}  ·  % of Total OI", "% of OI", px_legendonly=True), width='stretch')
+            st.plotly_chart(timeseries(d, pct_traces, f"{cat}  ·  % of Total OI", "% of OI", price=show_px), width='stretch')
 
     # Stacked Long Add/Liq + Short Add/Cover bars + Price
-    st.plotly_chart(bars_combined(d, lc, sc, nc, f"{cat} — weekly flow  ·  k lots", color),
+    st.plotly_chart(bars_combined(d, lc, sc, nc, f"{cat} — weekly flow  ·  k lots", color, price=show_px),
                     width='stretch')
 
     show_table(d, [lc, sc, nc] + ([spc] if spc else []) + ["Px"],
@@ -853,6 +866,8 @@ def render_commercial(d, report, color):
             with ch:
                 st.plotly_chart(seasonal(d, col, clr, f"{lbl} {name}"), width='stretch')
 
+    show_px = rollex_toggle("comm_show_px")
+
     # Combined timeseries — Long, Short, Net in selected unit + Price secondary
     ylabel = "k lots" if unit == "k lots" else "% of OI"
     suffix = "k" if unit == "k lots" else "%"
@@ -867,7 +882,7 @@ def render_commercial(d, report, color):
             fill="tozeroy", fillcolor="rgba(26,86,219,0.07)",
             line=dict(color=C_NET, width=2.2),
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Net: %{{y:.1f}}{suffix}<extra></extra>")})
-    st.plotly_chart(timeseries(d, traces, f"{lbl}  ·  {ylabel}", ylabel), width='stretch')
+    st.plotly_chart(timeseries(d, traces, f"{lbl}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
 
     # % of Total OI chart
     oi = d["Total OI"].replace(0, np.nan) if "Total OI" in d.columns else None
@@ -886,10 +901,10 @@ def render_commercial(d, report, color):
                 line=dict(color=C_NET, width=2.2),
                 hovertemplate="<b>%{x|%d %b %Y}</b><br>Net: %{y:.1f}%<extra></extra>")})
         if pct_traces:
-            st.plotly_chart(timeseries(d, pct_traces, f"{lbl}  ·  % of Total OI", "% of OI"), width='stretch')
+            st.plotly_chart(timeseries(d, pct_traces, f"{lbl}  ·  % of Total OI", "% of OI", price=show_px), width='stretch')
 
     # Stacked Long Add/Liq + Short Add/Cover bars + Price
-    st.plotly_chart(bars_combined(d, lc, sc, nc, f"{lbl} — weekly flow  ·  k lots", color),
+    st.plotly_chart(bars_combined(d, lc, sc, nc, f"{lbl} — weekly flow  ·  k lots", color, price=show_px),
                     width='stretch')
 
     show_table(d, [lc, sc, nc, "Px"], [lc, sc, nc], f"Data table — {lbl}")
@@ -946,6 +961,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
         "Shown per category in lots and % of OI.</p>", unsafe_allow_html=True)
 
     unit = st.radio("Unit", ["k lots","% of OI"], horizontal=True, key="spread_unit")
+    show_px = rollex_toggle("spread_show_px")
     if unit == "% of OI":
         st.caption("Denominator: All Crop Total OI")
     ylabel = "k lots" if unit=="k lots" else "% of OI"
@@ -958,7 +974,7 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
         traces.append({"trace": go.Scatter(x=d["Date"],y=y,name=lbl,
             line=dict(color=clr,width=2.0),
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{lbl}: %{{y:.1f}}<extra></extra>")})
-    st.plotly_chart(timeseries(d,traces,f"Spreading by Category  ·  {ylabel}",ylabel), width='stretch')
+    st.plotly_chart(timeseries(d,traces,f"Spreading by Category  ·  {ylabel}",ylabel,price=show_px), width='stretch')
 
     avail = [(lbl,col,clr) for lbl,(col,clr) in SPREAD_COLS.items() if col in d.columns]
 
