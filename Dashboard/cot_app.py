@@ -6489,10 +6489,10 @@ def _view_concentration():
         _tab_concentration(df, color)
 
 def _view_spreading():
-    if report == "Disagg" and not is_options:
+    if report == "Disagg":
         _tab_spreading(df, color, df_all_crops, commodity)
     else:
-        _na("Spreading positions are only available in the Disaggregated report (Fut or F&O).")
+        _na("Spreading positions are only available in the Disaggregated report.")
 
 def _view_old_new():
     if report == "CIT":
