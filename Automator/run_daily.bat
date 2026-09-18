@@ -35,6 +35,12 @@ echo [2b] Syncing USDBRL parquet... >> "%LOG%"
 xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\Roll Yield\Database\fx_brl.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database\" >> "%LOG%" 2>&1
 if %ERRORLEVEL% NEQ 0 echo WARNING: USDBRL sync had issues >> "%LOG%"
 
+:: Step 2c - Sync daily Futures OI parquets (feeds the Spec Prediction overview's
+:: live OI Change columns; source project updates these daily on its own schedule)
+echo [2c] Syncing Futures OI parquets... >> "%LOG%"
+xcopy /Y "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\Futures\Database\*_futures.parquet" "C:\Users\virat.arya\ETG\SoftsDatabase - Documents\Database\Hardmine\LSEG\COT_ALL\Database\Futures\" >> "%LOG%" 2>&1
+if %ERRORLEVEL% NEQ 0 echo WARNING: Futures OI sync had issues >> "%LOG%"
+
 :: Step 3 - Push updated parquets to GitHub
 :: (spec_prediction_log.parquet is included so Awaiting/Resolved state on the
 :: Spec Prediction overview survives Streamlit Cloud redeploys, which wipe
@@ -42,10 +48,10 @@ if %ERRORLEVEL% NEQ 0 echo WARNING: USDBRL sync had issues >> "%LOG%"
 :: every dashboard run, so this just picks up whatever's there.)
 echo [3] Pushing to GitHub... >> "%LOG%"
 cd /d "%REPO%"
-git add Database\Rollex\rollex_*.parquet Database\RollYield\roll_yield_data.parquet Database\fx_brl.parquet Database\spec_prediction_log.parquet >> "%LOG%" 2>&1
+git add Database\Rollex\rollex_*.parquet Database\RollYield\roll_yield_data.parquet Database\fx_brl.parquet Database\Futures\*_futures.parquet Database\spec_prediction_log.parquet >> "%LOG%" 2>&1
 git diff --cached --quiet
 if %ERRORLEVEL% NEQ 0 (
-    git -c core.askpass= commit -m "Daily Rollex/RollYield/BRL sync: %date%" >> "%LOG%" 2>&1
+    git -c core.askpass= commit -m "Daily Rollex/RollYield/BRL/Futures sync: %date%" >> "%LOG%" 2>&1
     git -c core.askpass= pull --rebase --autostash >> "%LOG%" 2>&1
     git -c core.askpass= push >> "%LOG%" 2>&1
     if not errorlevel 1 (

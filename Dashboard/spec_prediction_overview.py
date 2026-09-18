@@ -62,6 +62,15 @@ LOG_FILE    = DB_DIR / "spec_prediction_log.parquet"
 FX_BRL_FILE = DB_DIR / "fx_brl.parquet"
 _FX_BRL_FALLBACK = (Path(__file__).resolve().parent.parent.parent / "Roll Yield"
                      / "Database" / "fx_brl.parquet")
+# Daily open interest: synced daily into this repo's own Database/Futures/ by
+# Automator/run_daily.bat (Step 2c), same pattern as fx_brl above. Published
+# with a ~1-trading-day lag by ICE, so it's ahead of the last COT Tuesday but
+# usually a day or two behind "today" — that's real, not a bug.
+FUTURES_DIR = DB_DIR / "Futures"
+_FUTURES_FALLBACK_DIR = (Path(__file__).resolve().parent.parent.parent / "Futures" / "Database")
+FUTURES_MAP = {"KC":"kc_futures.parquet","CC":"cc_futures.parquet","CT":"ct_futures.parquet",
+               "SB":"sb_futures.parquet","RC":"rc_futures.parquet","LCC":"lcc_futures.parquet",
+               "LSU":"lsu_futures.parquet"}
 
 ROLLEX_MAP = {"KC":"rollex_KC.parquet","CC":"rollex_CC.parquet","CT":"rollex_CT.parquet",
               "SB":"rollex_SB.parquet","RC":"rollex_RC.parquet","LCC":"rollex_LCC.parquet",
@@ -150,6 +159,27 @@ def load_brl():
     df["Date"] = pd.to_datetime(df["Date"])
     return df.sort_values("Date").reset_index(drop=True)
 
+@st.cache_data(ttl=600)
+def load_futures_oi(commodity):
+    """Daily Total OI = sum of open_interest across all live contract months.
+    ICE reports OI a day behind (yesterday's settle), so the latest date here
+    trails the latest Rollex price date by ~1-2 sessions — drop unreported
+    (NaN/0) days rather than showing a false zero."""
+    fname = FUTURES_MAP.get(commodity)
+    if fname is None:
+        return pd.DataFrame(columns=["Date","Total_OI"])
+    path = FUTURES_DIR / fname
+    if not path.exists():
+        path = _FUTURES_FALLBACK_DIR / fname
+    if not path.exists():
+        return pd.DataFrame(columns=["Date","Total_OI"])
+    df = pd.read_parquet(path, columns=["Date","open_interest"])
+    df["Date"] = pd.to_datetime(df["Date"])
+    agg = df.groupby("Date")["open_interest"].sum(min_count=1).reset_index()
+    agg = agg.rename(columns={"open_interest":"Total_OI"})
+    agg = agg[agg["Total_OI"] > 0].sort_values("Date").reset_index(drop=True)
+    return agg
+
 
 def load_log():
     cols = ["Commodity","Target_Date","Base_Date","Base_Px","Base_Spec","Beta","Alpha",
@@ -231,12 +261,25 @@ def compute_commodity(commodity):
     last_cot_spec = float(merged["Spec Net"].iloc[-1])
     last_cot_px   = float(merged["rollex_px"].iloc[-1])
     prev_cot_spec = float(merged["Spec Net"].iloc[-2]) if len(merged) >= 2 else np.nan
-    last_oi       = float(merged["Total OI"].iloc[-1])
-    prev_oi       = float(merged["Total OI"].iloc[-2]) if len(merged) >= 2 else np.nan
 
     latest_px    = float(rx["rollex_px"].iloc[-1])
     latest_date  = rx["Date"].iloc[-1]
     latest_label = rx["active_label"].iloc[-1] if "active_label" in rx.columns else None
+
+    # Live OI change: last COT's Total OI vs the most recent actual daily
+    # print (ICE reports OI ~1 session late), same nowcast logic as price —
+    # not the stale week-over-week COT OI change.
+    oi_daily = load_futures_oi(commodity)
+    if not oi_daily.empty:
+        last_oi = pd.merge_asof(pd.DataFrame({"Date":[last_cot_date]}), oi_daily,
+                                 on="Date", direction="backward")["Total_OI"].iloc[0]
+        latest_oi = float(oi_daily["Total_OI"].iloc[-1])
+        latest_oi_date = oi_daily["Date"].iloc[-1]
+        last_oi = float(last_oi) if not pd.isna(last_oi) else float(merged["Total OI"].iloc[-1])
+    else:
+        last_oi = float(merged["Total OI"].iloc[-1])
+        latest_oi = last_oi
+        latest_oi_date = last_cot_date
 
     px_move_pct   = (latest_px / last_cot_px - 1) * 100 if last_cot_px else np.nan
     px_move_abs   = latest_px - last_cot_px
@@ -246,7 +289,7 @@ def compute_commodity(commodity):
     return dict(
         commodity=commodity, spec_col=spec_col,
         last_cot_date=last_cot_date, last_cot_spec=last_cot_spec, last_cot_px=last_cot_px,
-        prev_cot_spec=prev_cot_spec, last_oi=last_oi, prev_oi=prev_oi,
+        prev_cot_spec=prev_cot_spec, last_oi=last_oi, latest_oi=latest_oi, latest_oi_date=latest_oi_date,
         latest_px=latest_px, latest_date=latest_date, latest_label=latest_label,
         px_move_pct=px_move_pct, px_move_abs=px_move_abs,
         beta=fit["beta"], alpha=fit["alpha"], r2=fit["r2"], n=fit["n"],
@@ -309,7 +352,7 @@ _td = ("padding:3px 8px;font-size:.72rem;font-weight:600;color:#1e293b;"
 
 html = "<table style='border-collapse:collapse;width:100%;font-family:-apple-system,sans-serif'><tr>"
 for h in ["Spec Inclusion","Commodity","COT Date","Spec Net","Prediction","Actual",
-          "Px Change","Future","OI Change (K)","OI Change %","Px","Latest Px Date"]:
+          "Px Change","Future","OI Change (K)","OI Change %","Px","Latest OI Date"]:
     html += f"<th style='{_th}'>{h}</th>"
 html += "</tr>"
 
@@ -317,8 +360,8 @@ for c, res, r in rows:
     color = COMM_COLORS.get(c, "#374151")
     px_chg_pct = res["px_move_pct"]
     px_clr = "#16a34a" if px_chg_pct >= 0 else "#dc2626"
-    oi_chg = res["last_oi"] - res["prev_oi"] if not pd.isna(res["prev_oi"]) else np.nan
-    oi_chg_pct = (oi_chg / res["prev_oi"] * 100) if not pd.isna(res["prev_oi"]) and res["prev_oi"] else np.nan
+    oi_chg = res["latest_oi"] - res["last_oi"] if not pd.isna(res["last_oi"]) else np.nan
+    oi_chg_pct = (oi_chg / res["last_oi"] * 100) if not pd.isna(res["last_oi"]) and res["last_oi"] else np.nan
     oi_clr = "#16a34a" if (not pd.isna(oi_chg) and oi_chg >= 0) else "#dc2626"
     oi_chg_k = oi_chg / 1000
     spec_net_k = r["spec_net"] / 1000
@@ -344,7 +387,7 @@ for c, res, r in rows:
         f"<td style='{_td};color:{oi_clr}'>{oi_chg_k:+.1f}k</td>"
         f"<td style='{_td};color:{oi_clr}'>{oi_chg_pct:+.1f}%</td>"
         f"<td style='{_td}'>{res['latest_px']:.2f}</td>"
-        f"<td style='{_td};color:#6b7280;font-weight:400'>{res['latest_date'].strftime('%d-%b-%y')}</td>"
+        f"<td style='{_td};color:#6b7280;font-weight:400'>{res['latest_oi_date'].strftime('%d-%b-%y')}</td>"
         f"</tr>")
 html += "</table>"
 st.markdown(html, unsafe_allow_html=True)
