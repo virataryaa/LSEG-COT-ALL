@@ -29,6 +29,7 @@ Run: streamlit run spec_prediction_overview.py
 import datetime
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 from pathlib import Path
 
@@ -43,10 +44,29 @@ st.markdown("""
     background:#ffffff !important; color:#1a1a1a !important;
   }
   [data-testid="stHeader"] { background:transparent !important; }
-  .block-container { padding-top:.6rem !important; padding-bottom:.6rem !important; max-width:1700px; }
+  .block-container { padding-top:1rem !important; padding-bottom:1rem !important; max-width:1600px; }
   div[data-testid="stExpander"] summary { padding:2px 8px !important; min-height:0 !important; }
   div[data-testid="stExpander"] summary p { font-size:.74rem !important; }
   div[data-testid="stVerticalBlock"] { gap:.35rem !important; }
+
+  /* Minimal underline tabs */
+  div[data-testid="stTabs"] { margin-top:2px; }
+  div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    gap:22px; border-bottom:1px solid #edeff3;
+  }
+  div[data-testid="stTabs"] button[data-baseweb="tab"] {
+    padding:6px 2px !important; height:auto !important; background:transparent !important;
+  }
+  div[data-testid="stTabs"] button[data-baseweb="tab"] p {
+    font-size:.78rem !important; font-weight:600 !important; letter-spacing:.02em;
+    color:#9ca3af !important;
+  }
+  div[data-testid="stTabs"] button[aria-selected="true"] p { color:#111827 !important; }
+  div[data-testid="stTabs"] [data-baseweb="tab-highlight"] { background:#111827 !important; height:2px !important; }
+  div[data-testid="stTabs"] [data-baseweb="tab-border"] { display:none; }
+
+  div[data-testid="stSelectbox"] label p { font-size:.68rem !important; color:#9ca3af !important;
+    font-weight:700 !important; letter-spacing:.04em !important; }
 </style>""", unsafe_allow_html=True)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
@@ -97,7 +117,8 @@ COMM_COLORS = {"KC":"#1a56db","CC":"#d97706","SB":"#059669","CT":"#7c3aed",
 def _derive_nets(df):
     pairs = [("Spec Long","Spec Short","Spec Net"), ("Index Long","Index Short","Index Net"),
              ("Non Rep Long","Non Rep Short","Non Rep Net"), ("MM Long","MM Short","MM Net"),
-             ("Other Long","Other Short","Other Net")]
+             ("Other Long","Other Short","Other Net"), ("Comm Long","Comm Short","Comm Net"),
+             ("Producer Long","Producer Short","Producer Net")]
     for l, s, n in pairs:
         if l in df.columns and s in df.columns and n not in df.columns:
             df[n] = df[l] - df[s]
@@ -287,13 +308,14 @@ def compute_commodity(commodity):
     predicted_net    = last_cot_spec + predicted_delta
 
     return dict(
-        commodity=commodity, spec_col=spec_col,
+        commodity=commodity, spec_col=spec_col, is_cit=is_cit,
         last_cot_date=last_cot_date, last_cot_spec=last_cot_spec, last_cot_px=last_cot_px,
         prev_cot_spec=prev_cot_spec, last_oi=last_oi, latest_oi=latest_oi, latest_oi_date=latest_oi_date,
         latest_px=latest_px, latest_date=latest_date, latest_label=latest_label,
         px_move_pct=px_move_pct, px_move_abs=px_move_abs,
         beta=fit["beta"], alpha=fit["alpha"], r2=fit["r2"], n=fit["n"],
         predicted_delta=predicted_delta, predicted_net=predicted_net,
+        hist=merged, sub=sub,
     )
 
 
@@ -324,18 +346,37 @@ def resolve_row(res, log_df):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# BUILD TABLE
+# PLOT + TABLE HELPERS
 # ══════════════════════════════════════════════════════════════════════════
-st.markdown(
-    "<div style='background:#111827;color:#fff;padding:6px 14px;border-radius:6px 6px 0 0;"
-    "font-size:.86rem;font-weight:700;letter-spacing:.02em'>SPEC CHANGE PREDICTION &amp; ACTUAL</div>"
-    "<div style='background:#f3f4f6;color:#4b5563;padding:4px 14px;font-size:.66rem;"
-    "border-radius:0 0 6px 6px;margin-bottom:6px'>"
-    "NYC (KC/CC/SB/CT) = Spec + Non Rep + Index &nbsp;&middot;&nbsp; "
-    "Europe (RC/LCC/LSU) = Managed Money + Other + Non Rep &nbsp;&middot;&nbsp; "
-    "Prediction = &beta;&times;&Delta;Px% (last COT Tue &rarr; latest Tue close) + &alpha;, fit on weekly history</div>",
-    unsafe_allow_html=True)
+_BASE = dict(
+    template="plotly_white", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif", size=11, color="#1a1a1a"))
 
+def _ax(x=False):
+    b = dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)", gridwidth=1,
+             zeroline=True, zerolinecolor="rgba(0,0,0,0.12)", zerolinewidth=1,
+             showline=True, linecolor="rgba(0,0,0,0.08)", linewidth=1,
+             tickfont=dict(size=10, color="#666"))
+    if x:
+        b.update(showgrid=False, tickangle=-35, nticks=16, hoverformat="%d %b %Y")
+    return b
+
+C_LONG, C_SHORT = "#16a34a", "#dc2626"
+
+_th = ("padding:5px 10px;font-size:.6rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+       "border-bottom:1px solid #edeff3;text-align:left;white-space:nowrap")
+_td = ("padding:5px 10px;font-size:.75rem;font-weight:600;color:#1e293b;"
+       "border-bottom:1px solid #f3f4f6;white-space:nowrap;line-height:1.3")
+
+def _table(headers, rows_html):
+    h = "".join(f"<th style='{_th}'>{x}</th>" for x in headers)
+    return (f"<table style='border-collapse:collapse;width:100%;font-family:-apple-system,sans-serif'>"
+            f"<tr>{h}</tr>{rows_html}</table>")
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# LOAD ALL COMMODITIES ONCE
+# ══════════════════════════════════════════════════════════════════════════
 log_df = load_log()
 rows = []
 for c in COMMODITIES:
@@ -344,140 +385,316 @@ for c in COMMODITIES:
         continue
     resolved, log_df = resolve_row(res, log_df)
     rows.append((c, res, resolved))
+res_by_c = {c: res for c, res, r in rows}
 
-_th = ("padding:3px 8px;font-size:.58rem;font-weight:700;color:#94a3b8;letter-spacing:.03em;"
-       "border:1px solid #e5e7eb;background:#f9fafb;text-align:left;white-space:nowrap")
-_td = ("padding:3px 8px;font-size:.72rem;font-weight:600;color:#1e293b;"
-       "border:1px solid #e5e7eb;white-space:nowrap;line-height:1.3")
+st.markdown(
+    "<div style='font-size:1.05rem;font-weight:800;letter-spacing:-.01em;color:#111827'>Spec Change Prediction</div>"
+    "<div style='font-size:.7rem;color:#9ca3af;margin:1px 0 4px'>"
+    "NYC (KC/CC/SB/CT) = Spec + Non Rep + Index &nbsp;&middot;&nbsp; "
+    "Europe (RC/LCC/LSU) = Managed Money + Other + Non Rep &nbsp;&middot;&nbsp; "
+    "Prediction = &beta;&times;&Delta;Px% (last COT Tue &rarr; latest Tue close) + &alpha;</div>",
+    unsafe_allow_html=True)
 
-html = "<table style='border-collapse:collapse;width:100%;font-family:-apple-system,sans-serif'><tr>"
-for h in ["Spec Inclusion","Commodity","COT Date","Spec Net","Prediction","Actual",
-          "Px Change","Future","OI Change (K)","OI Change %","Px","Latest OI Date"]:
-    html += f"<th style='{_th}'>{h}</th>"
-html += "</tr>"
+tab_overview, tab_regress, tab_position, tab_diag = st.tabs(
+    ["Overview", "Regression & Correlation", "Positioning", "Diagnostics"])
 
-for c, res, r in rows:
-    color = COMM_COLORS.get(c, "#374151")
-    px_chg_pct = res["px_move_pct"]
-    px_clr = "#16a34a" if px_chg_pct >= 0 else "#dc2626"
-    oi_chg = res["latest_oi"] - res["last_oi"] if not pd.isna(res["last_oi"]) else np.nan
-    oi_chg_pct = (oi_chg / res["last_oi"] * 100) if not pd.isna(res["last_oi"]) and res["last_oi"] else np.nan
-    oi_clr = "#16a34a" if (not pd.isna(oi_chg) and oi_chg >= 0) else "#dc2626"
-    oi_chg_k = oi_chg / 1000
-    spec_net_k = r["spec_net"] / 1000
-    pred_k = r["prediction"] / 1000
-    pred_clr = "#16a34a" if pred_k >= 0 else "#dc2626"
-    if r["status"] == "Resolved":
-        act_k = r["actual"] / 1000
-        act_clr = "#16a34a" if act_k >= 0 else "#dc2626"
-        act_html = f"<span style='color:{act_clr}'>{act_k:+.1f}k</span>"
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 1 — OVERVIEW
+# ══════════════════════════════════════════════════════════════════════════
+with tab_overview:
+    body = ""
+    for c, res, r in rows:
+        color = COMM_COLORS.get(c, "#374151")
+        region = "NYC" if res["is_cit"] else "EU"
+        region_bg = "#eff6ff" if res["is_cit"] else "#fdf4ff"
+        region_fg = "#1d4ed8" if res["is_cit"] else "#a21caf"
+        px_chg_pct = res["px_move_pct"]
+        px_clr = C_LONG if px_chg_pct >= 0 else C_SHORT
+        oi_chg = res["latest_oi"] - res["last_oi"] if not pd.isna(res["last_oi"]) else np.nan
+        oi_chg_pct = (oi_chg / res["last_oi"] * 100) if not pd.isna(res["last_oi"]) and res["last_oi"] else np.nan
+        oi_clr = C_LONG if (not pd.isna(oi_chg) and oi_chg >= 0) else C_SHORT
+        oi_chg_k = oi_chg / 1000
+        spec_net_k = r["spec_net"] / 1000
+        pred_k = r["prediction"] / 1000
+        pred_clr = C_LONG if pred_k >= 0 else C_SHORT
+        if r["status"] == "Resolved":
+            act_k = r["actual"] / 1000
+            act_clr = C_LONG if act_k >= 0 else C_SHORT
+            act_html = f"<span style='color:{act_clr}'>{act_k:+.1f}k</span>"
+        else:
+            act_html = "<i style='color:#c7cbd1;font-weight:400'>Awaiting</i>"
+
+        body += (
+            f"<tr>"
+            f"<td style='{_td}'><span style='background:{region_bg};color:{region_fg};"
+            f"border-radius:4px;padding:1px 6px;font-size:.62rem;font-weight:700'>{region}</span></td>"
+            f"<td style='{_td};color:{color}'>{COMM_NAMES[c]} <span style='color:#c7cbd1;font-weight:400'>{c}</span></td>"
+            f"<td style='{_td};color:#6b7280;font-weight:400'>{r['cot_date'].strftime('%d %b %y')}</td>"
+            f"<td style='{_td}'>{spec_net_k:+.1f}k</td>"
+            f"<td style='{_td};color:{pred_clr}'>{pred_k:+.1f}k</td>"
+            f"<td style='{_td}'>{act_html}</td>"
+            f"<td style='{_td};color:{px_clr}'>{px_chg_pct:+.1f}%</td>"
+            f"<td style='{_td};color:#6b7280;font-weight:400'>{res['latest_label'] or '—'}</td>"
+            f"<td style='{_td};color:{oi_clr}'>{oi_chg_k:+.1f}k <span style='color:#c7cbd1'>({oi_chg_pct:+.1f}%)</span></td>"
+            f"<td style='{_td}'>{res['latest_px']:.2f}</td>"
+            f"<td style='{_td};color:#6b7280;font-weight:400'>{res['latest_oi_date'].strftime('%d %b %y')}</td>"
+            f"</tr>")
+    st.markdown(_table(["Region","Commodity","COT Date","Spec Net","Prediction","Actual",
+                         "Px Δ","Future","OI Δ","Px","OI Date"], body), unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='margin-top:10px;font-size:.62rem;color:#c7cbd1'>"
+        f"{len(log_df)} logged predictions &middot; rows flip Awaiting &rarr; Resolved once the next COT release lands</div>",
+        unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 2 — REGRESSION & CORRELATION
+# ══════════════════════════════════════════════════════════════════════════
+with tab_regress:
+    sel = st.selectbox("Commodity", COMMODITIES, format_func=lambda x: f"{COMM_NAMES[x]} ({x})",
+                        key="regress_commodity")
+    res = res_by_c.get(sel)
+    if res is None:
+        st.info("No data.")
     else:
-        act_html = "<i style='color:#9ca3af;font-weight:400'>Awaiting</i>"
+        color = COMM_COLORS[sel]
+        hist = res["hist"]
+        ds = hist["Spec Net"].diff()
+        px_chg = hist["rollex_px"].pct_change() * 100
+        common = ~(ds.isna() | px_chg.isna())
+        x_hist = px_chg[common].values.astype(float)
+        y_hist = ds[common].values.astype(float)
+        dates_common = hist["Date"][common].reset_index(drop=True)
+        beta, alpha, r2 = res["beta"], res["alpha"], res["r2"]
+        x_line = np.linspace(x_hist.min(), x_hist.max(), 200)
+        y_line = beta * x_line + alpha
 
-    html += (
-        f"<tr>"
-        f"<td style='{_td};color:#6b7280;font-weight:400'>{SPEC_INCLUSION[c]}</td>"
-        f"<td style='{_td};color:{color}'>{COMM_NAMES[c]} ({c})</td>"
-        f"<td style='{_td}'>{r['cot_date'].strftime('%d-%b-%y')}</td>"
-        f"<td style='{_td}'>{spec_net_k:+.1f}k</td>"
-        f"<td style='{_td};color:{pred_clr}'>{pred_k:+.1f}k</td>"
-        f"<td style='{_td}'>{act_html}</td>"
-        f"<td style='{_td};color:{px_clr}'>{px_chg_pct:+.1f}%</td>"
-        f"<td style='{_td};color:#6b7280;font-weight:400'>{res['latest_label'] or '—'}</td>"
-        f"<td style='{_td};color:{oi_clr}'>{oi_chg_k:+.1f}k</td>"
-        f"<td style='{_td};color:{oi_clr}'>{oi_chg_pct:+.1f}%</td>"
-        f"<td style='{_td}'>{res['latest_px']:.2f}</td>"
-        f"<td style='{_td};color:#6b7280;font-weight:400'>{res['latest_oi_date'].strftime('%d-%b-%y')}</td>"
-        f"</tr>")
-html += "</table>"
-st.markdown(html, unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x_hist, y=y_hist, mode="markers",
+                marker=dict(color=color, size=6, opacity=.5, line=dict(width=.4, color="white")),
+                hovertemplate="ΔPx%: %{x:.1f}%<br>ΔSpec: %{y:.1f} lots<extra></extra>", showlegend=False))
+            fig.add_trace(go.Scatter(x=x_line, y=y_line, mode="lines",
+                line=dict(color=color, width=2, dash="dash"), showlegend=False))
+            fig.add_trace(go.Scatter(x=[x_hist[-1]], y=[y_hist[-1]], mode="markers", name="Latest",
+                marker=dict(symbol="star", size=13, color="#f59e0b", line=dict(width=1, color="white")),
+                hovertemplate=f"<b>{dates_common.iloc[-1].strftime('%d %b %y')}</b><extra></extra>"))
+            fig.add_annotation(x=0.02, y=0.98, xref="paper", yref="paper",
+                text=f"R² = {r2:.2f} · n = {len(x_hist)}", showarrow=False,
+                font=dict(size=10, color="#6b7280"), xanchor="left", yanchor="top")
+            fig.update_layout(**_BASE, height=340, showlegend=False,
+                title=dict(text="ΔSpec Net vs ΔPx% · weekly", font=dict(size=11, color="#374151"), x=0),
+                margin=dict(l=54, r=16, t=38, b=40),
+                xaxis=dict(**_ax(), title_text="Px Δ% (weekly)", ticksuffix="%"),
+                yaxis=dict(**_ax(), title_text="Δ Spec Net (lots)"))
+            st.plotly_chart(fig, width='stretch')
+        with c2:
+            n_show = min(52, len(dates_common))
+            bd = dates_common.iloc[-n_show:].dt.strftime("%d %b'%y")
+            ba = y_hist[-n_show:]
+            bp = beta * x_hist[-n_show:] + alpha
+            fig2 = go.Figure()
+            fig2.add_trace(go.Bar(x=bd, y=ba, name="Actual", marker_color=color, opacity=.75))
+            fig2.add_trace(go.Bar(x=bd, y=bp, name="Predicted", marker_color="#c7cbd1", opacity=.85))
+            fig2.update_layout(**_BASE, height=340, barmode="group",
+                title=dict(text="Actual vs Predicted Δ Spec · last 52w", font=dict(size=11, color="#374151"), x=0),
+                margin=dict(l=54, r=16, t=38, b=40),
+                xaxis=_ax(x=True),
+                yaxis=dict(**_ax(), title_text="Δ (lots)"),
+                legend=dict(orientation="h", y=1.16, x=1, xanchor="right", font=dict(size=9)))
+            st.plotly_chart(fig2, width='stretch')
 
-with st.expander("Regression diagnostics (β, α, R², n obs)"):
+        st.markdown(
+            f"<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+            f"margin:6px 0 6px'>PAIRWISE COT CORRELATION — {sel} · weekly Δ</div>", unsafe_allow_html=True)
+
+        sub = res["sub"]
+        if res["is_cit"]:
+            corr_cols = ["Spec Net","Comm Net","Non Rep Net","Index Net"]
+        else:
+            corr_cols = ["MM Net","Comm Net","Non Rep Net","Other Net"]
+        pw = {lbl: sub[lbl].astype(float).diff().reset_index(drop=True)
+              for lbl in corr_cols if lbl in sub.columns}
+        pw["Px %Δ"] = hist["rollex_px"].pct_change().reset_index(drop=True) * 100
+        pw_df = pd.DataFrame(pw).dropna(how="all")
+        if len(pw_df) >= 4:
+            corr = pw_df.corr()
+            labels = list(corr.columns)
+            z = corr.values
+            fig3 = go.Figure(go.Heatmap(
+                z=z, x=labels, y=labels,
+                colorscale=[[0,"#dc2626"],[0.5,"#f9fafb"],[1,"#16a34a"]], zmid=0, zmin=-1, zmax=1,
+                text=[[f"{v:+.2f}" for v in row] for row in z], texttemplate="%{text}",
+                textfont=dict(size=10, color="#111"),
+                hovertemplate="<b>%{y}</b> vs <b>%{x}</b>: r=%{z:.2f}<extra></extra>",
+                colorbar=dict(thickness=10, len=.7, tickfont=dict(size=9)), xgap=2, ygap=2))
+            fig3.update_layout(**_BASE, height=270, margin=dict(l=90, r=20, t=10, b=10),
+                xaxis=dict(side="top", tickfont=dict(size=9), showgrid=False, showline=False),
+                yaxis=dict(autorange="reversed", tickfont=dict(size=9), showgrid=False, showline=False))
+            st.plotly_chart(fig3, width='stretch')
+        else:
+            st.info("Not enough overlapping history for a correlation matrix.")
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 3 — POSITIONING (Recap + Spec/Commercial, per commodity)
+# ══════════════════════════════════════════════════════════════════════════
+with tab_position:
+    sel2 = st.selectbox("Commodity", COMMODITIES, format_func=lambda x: f"{COMM_NAMES[x]} ({x})",
+                         key="position_commodity")
+    res2 = res_by_c.get(sel2)
+    if res2 is None:
+        st.info("No data.")
+    else:
+        color = COMM_COLORS[sel2]
+        sub = res2["sub"]
+        is_cit = res2["is_cit"]
+        latest, prev = sub.iloc[-1], (sub.iloc[-2] if len(sub) >= 2 else sub.iloc[-1])
+
+        if is_cit:
+            groups = [("Large Spec","Spec Long","Spec Short","Spec Net"),
+                      ("Commercial","Comm Long","Comm Short","Comm Net"),
+                      ("Non-Reportable","Non Rep Long","Non Rep Short","Non Rep Net"),
+                      ("Index","Index Long","Index Short","Index Net")]
+            spread_col, spread_lbl = "Spec Spread", "Spec Spread"
+        else:
+            groups = [("Managed Money","MM Long","MM Short","MM Net"),
+                      ("Commercial (Prod.)","Producer Long","Producer Short","Producer Net"),
+                      ("Non-Reportable","Non Rep Long","Non Rep Short","Non Rep Net"),
+                      ("Other Reportable","Other Long","Other Short","Other Net")]
+            spread_col, spread_lbl = "MM Spread", "MM Spread"
+
+        cards = ""
+        for name, lc, sc, nc in groups:
+            if nc not in sub.columns:
+                continue
+            v = float(latest[nc])
+            pv = float(prev[nc]) if nc in prev else np.nan
+            chg = v - pv if not pd.isna(pv) else np.nan
+            clr = C_LONG if v >= 0 else C_SHORT
+            chg_html = (f"<span style='font-size:.62rem;color:{C_LONG if chg>=0 else C_SHORT}'>"
+                        f"{chg/1000:+.1f}k w/w</span>") if not pd.isna(chg) else ""
+            cards += (
+                f"<div style='flex:1;min-width:150px;border:1px solid #edeff3;border-radius:8px;padding:8px 12px'>"
+                f"<div style='font-size:.6rem;color:#9ca3af;font-weight:700;letter-spacing:.03em'>{name.upper()}</div>"
+                f"<div style='font-size:1rem;font-weight:800;color:{clr}'>{v/1000:+.1f}k</div>{chg_html}</div>")
+        if spread_col in sub.columns and pd.notna(latest.get(spread_col)):
+            sv = float(latest[spread_col])
+            cards += (
+                f"<div style='flex:1;min-width:150px;border:1px solid #edeff3;border-radius:8px;padding:8px 12px'>"
+                f"<div style='font-size:.6rem;color:#9ca3af;font-weight:700;letter-spacing:.03em'>{spread_lbl.upper()}</div>"
+                f"<div style='font-size:1rem;font-weight:800;color:#374151'>{sv/1000:.1f}k</div></div>")
+        st.markdown(f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px'>{cards}</div>",
+                    unsafe_allow_html=True)
+
+        sub_tab_recap, sub_tab_ls = st.tabs(["Net History", "Long / Short"])
+        with sub_tab_recap:
+            fig = go.Figure()
+            for name, lc, sc, nc in groups:
+                if nc not in sub.columns:
+                    continue
+                fig.add_trace(go.Scatter(x=sub["Date"], y=sub[nc]/1000, mode="lines",
+                                          name=name, line=dict(width=1.8)))
+            fig.update_layout(**_BASE, height=380,
+                title=dict(text=f"{COMM_NAMES[sel2]} — Net Positioning", font=dict(size=11, color="#374151"), x=0),
+                margin=dict(l=54, r=16, t=38, b=40),
+                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+                yaxis=dict(**_ax(), title_text="k lots"),
+                legend=dict(orientation="h", y=1.14, x=0, font=dict(size=9)))
+            st.plotly_chart(fig, width='stretch')
+        with sub_tab_ls:
+            gsel = st.radio("Category", [g[0] for g in groups], horizontal=True, key=f"pos_cat_{sel2}")
+            _, lc, sc, nc = next(g for g in groups if g[0] == gsel)
+            fig = go.Figure()
+            if lc in sub.columns:
+                fig.add_trace(go.Scatter(x=sub["Date"], y=sub[lc]/1000, name="Long", line=dict(color=C_LONG, width=1.6)))
+            if sc in sub.columns:
+                fig.add_trace(go.Scatter(x=sub["Date"], y=-sub[sc]/1000, name="Short", line=dict(color=C_SHORT, width=1.6)))
+            if nc in sub.columns:
+                fig.add_trace(go.Scatter(x=sub["Date"], y=sub[nc]/1000, name="Net", line=dict(color=color, width=2, dash="dot")))
+            fig.update_layout(**_BASE, height=380,
+                title=dict(text=f"{gsel} — Long / Short / Net", font=dict(size=11, color="#374151"), x=0),
+                margin=dict(l=54, r=16, t=38, b=40),
+                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+                yaxis=dict(**_ax(), title_text="k lots"),
+                legend=dict(orientation="h", y=1.14, x=0, font=dict(size=9)))
+            st.plotly_chart(fig, width='stretch')
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 4 — DIAGNOSTICS  (regression table, Roll Yield, USDBRL)
+# ══════════════════════════════════════════════════════════════════════════
+with tab_diag:
+    st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+                "margin-bottom:6px'>REGRESSION DIAGNOSTICS</div>", unsafe_allow_html=True)
     diag = pd.DataFrame([{
-        "Commodity": c, "β (k lots / 1%)": f"{res['beta']:+.2f}", "α": f"{res['alpha']:+.2f}",
+        "Commodity": c, "β (lots/1%)": f"{res['beta']:+.1f}", "α": f"{res['alpha']:+.1f}",
         "R²": f"{res['r2']:.2f}", "n obs": res["n"],
     } for c, res, r in rows]).set_index("Commodity")
     st.dataframe(diag, width='stretch', height=246)
 
-# ══════════════════════════════════════════════════════════════════════════
-# ROLL YIELD  +  BRL PANELS
-# ══════════════════════════════════════════════════════════════════════════
-col1, col2 = st.columns([1.3, 1])
+    col1, col2 = st.columns([1.3, 1])
+    with col1:
+        st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+                    "margin:14px 0 6px'>ROLL YIELD — actual, week on week</div>", unsafe_allow_html=True)
+        ry_all = load_roll_yield()
+        ry_body = ""
+        for c, res, r in rows:
+            ry_code = ROLLYIELD_MAP.get(c)
+            lt = old = np.nan
+            if ry_code and not ry_all.empty:
+                s = ry_all[ry_all["Commodity"] == ry_code].sort_values("Date")
+                if not s.empty:
+                    lt = pd.merge_asof(pd.DataFrame({"Date":[res["last_cot_date"]]}), s,
+                                        on="Date", direction="backward")["roll_yield_pct"].iloc[0]
+                    old_date = res["last_cot_date"] - pd.Timedelta(days=7)
+                    old = pd.merge_asof(pd.DataFrame({"Date":[old_date]}), s,
+                                         on="Date", direction="backward")["roll_yield_pct"].iloc[0]
+            if pd.isna(lt) or pd.isna(old):
+                ry_body += (f"<tr><td style='{_td}'>{c}</td>"
+                            f"<td style='{_td}' colspan='3'><i style='color:#c7cbd1;font-weight:400'>no series</i></td></tr>")
+                continue
+            chg = lt - old
+            clr = C_LONG if chg >= 0 else C_SHORT
+            ry_body += (f"<tr><td style='{_td}'>{c}</td><td style='{_td}'>{lt:.1f}%</td>"
+                        f"<td style='{_td}'>{old:.1f}%</td><td style='{_td};color:{clr}'>{chg:+.1f}%</td></tr>")
+        st.markdown(_table(["Commodity","Lt COT","Old COT","Change"], ry_body), unsafe_allow_html=True)
 
-with col1:
-    st.markdown("<div style='font-size:.7rem;font-weight:700;color:#374151;margin:4px 0 3px;letter-spacing:.03em'>ROLL YIELD — actual, week on week</div>", unsafe_allow_html=True)
-    ry_all = load_roll_yield()
-    ry_rows = []
-    for c, res, r in rows:
-        ry_code = ROLLYIELD_MAP.get(c)
-        if ry_code is None or ry_all.empty:
-            ry_rows.append((c, np.nan, np.nan)); continue
-        s = ry_all[ry_all["Commodity"] == ry_code].sort_values("Date")
-        if s.empty:
-            ry_rows.append((c, np.nan, np.nan)); continue
-        lt = pd.merge_asof(pd.DataFrame({"Date":[res["last_cot_date"]]}), s, on="Date", direction="backward")["roll_yield_pct"].iloc[0]
-        old_date = res["last_cot_date"] - pd.Timedelta(days=7)
-        old = pd.merge_asof(pd.DataFrame({"Date":[old_date]}), s, on="Date", direction="backward")["roll_yield_pct"].iloc[0]
-        ry_rows.append((c, lt, old))
-    ry_html = "<table style='border-collapse:collapse;width:100%;font-family:-apple-system,sans-serif'><tr>"
-    for h in ["Commodity","Lt COT","Old COT","Change"]:
-        ry_html += f"<th style='{_th}'>{h}</th>"
-    ry_html += "</tr>"
-    for c, lt, old in ry_rows:
-        if pd.isna(lt) or pd.isna(old):
-            ry_html += f"<tr><td style='{_td}'>{c}</td><td style='{_td}' colspan='3'><i style='color:#9ca3af;font-weight:400'>no series</i></td></tr>"
-            continue
-        chg = lt - old
-        clr = "#16a34a" if chg >= 0 else "#dc2626"
-        ry_html += (f"<tr><td style='{_td}'>{c}</td><td style='{_td}'>{lt:.1f}%</td>"
-                    f"<td style='{_td}'>{old:.1f}%</td><td style='{_td};color:{clr}'>{chg:+.1f}%</td></tr>")
-    ry_html += "</table>"
-    st.markdown(ry_html, unsafe_allow_html=True)
+    with col2:
+        st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+                    "margin:14px 0 6px'>USDBRL MOVE</div>", unsafe_allow_html=True)
+        fx = load_brl()
+        if fx.empty or not rows:
+            st.info("No BRL series found.")
+        else:
+            ref_last_cot = rows[0][1]["last_cot_date"]
+            prev_cot = ref_last_cot - pd.Timedelta(days=7)
+            latest_fx_date = fx["Date"].iloc[-1]
+            latest_fx = float(fx["USDBRL"].iloc[-1])
 
-with col2:
-    st.markdown("<div style='font-size:.7rem;font-weight:700;color:#374151;margin:4px 0 3px;letter-spacing:.03em'>USDBRL MOVE</div>", unsafe_allow_html=True)
-    fx = load_brl()
-    if fx.empty or not rows:
-        st.info("No BRL series found.")
-    else:
-        # Use the most-recent commodity's COT calendar as the reference weeks
-        ref_last_cot = rows[0][1]["last_cot_date"]
-        prev_cot = ref_last_cot - pd.Timedelta(days=7)
-        prev2_cot = ref_last_cot - pd.Timedelta(days=14)
-        latest_fx_date = fx["Date"].iloc[-1]
-        latest_fx = float(fx["USDBRL"].iloc[-1])
+            def _asof(fxdf, d):
+                m = pd.merge_asof(pd.DataFrame({"Date":[d]}), fxdf, on="Date", direction="backward")
+                return float(m["USDBRL"].iloc[0]) if not m["USDBRL"].isna().iloc[0] else np.nan
 
-        def _asof(fx, d):
-            m = pd.merge_asof(pd.DataFrame({"Date":[d]}), fx, on="Date", direction="backward")
-            return float(m["USDBRL"].iloc[0]) if not m["USDBRL"].isna().iloc[0] else np.nan
+            px_last_cot = _asof(fx, ref_last_cot)
+            px_prev_cot = _asof(fx, prev_cot)
 
-        px_last_cot = _asof(fx, ref_last_cot)
-        px_prev_cot = _asof(fx, prev_cot)
-        px_prev2_cot = _asof(fx, prev2_cot)
+            def _panel(title, new_lbl, new_val, old_lbl, old_val):
+                if pd.isna(new_val) or pd.isna(old_val) or old_val == 0:
+                    return
+                mv = (new_val / old_val - 1) * 100
+                clr = C_LONG if mv >= 0 else C_SHORT
+                st.markdown(
+                    f"<div style='border:1px solid #edeff3;border-radius:8px;padding:8px 12px;margin-bottom:8px'>"
+                    f"<div style='font-size:.6rem;color:#9ca3af;font-weight:700;letter-spacing:.03em;margin-bottom:4px'>{title}</div>"
+                    f"<table style='width:100%;font-size:.72rem'><tr>"
+                    f"<td style='color:#9ca3af'>{new_lbl}</td><td style='color:#9ca3af'>{old_lbl}</td><td style='color:#9ca3af'>% Move</td></tr>"
+                    f"<tr><td style='font-weight:700'>{new_val:.4f}</td><td style='font-weight:700'>{old_val:.4f}</td>"
+                    f"<td style='font-weight:700;color:{clr}'>{mv:+.2f}%</td></tr></table></div>",
+                    unsafe_allow_html=True)
 
-        def _panel(title, new_lbl, new_val, old_lbl, old_val):
-            if pd.isna(new_val) or pd.isna(old_val) or old_val == 0:
-                return
-            mv = (new_val / old_val - 1) * 100
-            clr = "#16a34a" if mv >= 0 else "#dc2626"
-            st.markdown(
-                f"<div style='border:1px solid #e5e7eb;border-radius:6px;padding:4px 10px;margin-bottom:5px'>"
-                f"<div style='font-size:.58rem;color:#9ca3af;font-weight:700;letter-spacing:.03em;margin-bottom:2px'>{title}</div>"
-                f"<table style='width:100%;font-size:.7rem'><tr>"
-                f"<td style='color:#6b7280;padding:1px 0'>{new_lbl}</td><td style='color:#6b7280;padding:1px 0'>{old_lbl}</td><td style='color:#6b7280;padding:1px 0'>% Move</td></tr>"
-                f"<tr><td style='font-weight:700;padding:1px 0'>{new_val:.4f}</td><td style='font-weight:700;padding:1px 0'>{old_val:.4f}</td>"
-                f"<td style='font-weight:700;color:{clr};padding:1px 0'>{mv:+.2f}%</td></tr></table></div>",
+            _panel("LATEST BRL MOVE WRT LAST COT", latest_fx_date.strftime('%d %b %y'), latest_fx,
+                   ref_last_cot.strftime('%d %b %y'), px_last_cot)
+            _panel("BRL MOVE IN PREVIOUS COT WINDOW", ref_last_cot.strftime('%d %b %y'), px_last_cot,
+                   prev_cot.strftime('%d %b %y'), px_prev_cot)
+
+    st.markdown(f"<div style='margin-top:10px;font-size:.6rem;color:#c7cbd1'>Log: {LOG_FILE.name}</div>",
                 unsafe_allow_html=True)
-
-        _panel("LATEST BRL MOVE WRT LAST COT",
-               latest_fx_date.strftime('%d-%b-%y'), latest_fx,
-               ref_last_cot.strftime('%d-%b-%y'), px_last_cot)
-        _panel("BRL MOVE IN PREVIOUS COT WINDOW",
-               ref_last_cot.strftime('%d-%b-%y'), px_last_cot,
-               prev_cot.strftime('%d-%b-%y'), px_prev_cot)
-
-st.markdown(
-    "<div style='margin-top:4px;font-size:.6rem;color:#9ca3af'>"
-    f"Log: {LOG_FILE.name} &middot; {len(log_df)} logged predictions &middot; "
-    "refresh weekly once new COT data lands to see rows flip from Awaiting to Resolved.</div>",
-    unsafe_allow_html=True)
