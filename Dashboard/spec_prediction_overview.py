@@ -395,8 +395,8 @@ st.markdown(
     "Prediction = &beta;&times;&Delta;Px% (last COT Tue &rarr; latest Tue close) + &alpha;</div>",
     unsafe_allow_html=True)
 
-tab_overview, tab_regress, tab_position, tab_diag = st.tabs(
-    ["Overview", "Regression & Correlation", "Positioning", "Diagnostics"])
+tab_overview, tab_regress, tab_position = st.tabs(
+    ["Overview", "Regression & Correlation", "Positioning"])
 
 # ══════════════════════════════════════════════════════════════════════════
 # TAB 1 — OVERVIEW
@@ -535,6 +535,80 @@ with tab_regress:
         else:
             st.info("Not enough overlapping history for a correlation matrix.")
 
+    with st.expander("Diagnostics — R² across commodities · Roll Yield · USDBRL"):
+        diag = pd.DataFrame([{
+            "Commodity": c, "R²": f"{res['r2']:.2f}", "n obs": res["n"],
+        } for c, res, r in rows]).set_index("Commodity")
+        st.dataframe(diag, width='stretch', height=246)
+
+        col1, col2 = st.columns([1.3, 1])
+        with col1:
+            st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+                        "margin:14px 0 6px'>ROLL YIELD — actual, week on week</div>", unsafe_allow_html=True)
+            ry_all = load_roll_yield()
+            ry_body = ""
+            for c, res_c, r in rows:
+                ry_code = ROLLYIELD_MAP.get(c)
+                lt = old = np.nan
+                if ry_code and not ry_all.empty:
+                    s = ry_all[ry_all["Commodity"] == ry_code].sort_values("Date")
+                    if not s.empty:
+                        lt = pd.merge_asof(pd.DataFrame({"Date":[res_c["last_cot_date"]]}), s,
+                                            on="Date", direction="backward")["roll_yield_pct"].iloc[0]
+                        old_date = res_c["last_cot_date"] - pd.Timedelta(days=7)
+                        old = pd.merge_asof(pd.DataFrame({"Date":[old_date]}), s,
+                                             on="Date", direction="backward")["roll_yield_pct"].iloc[0]
+                if pd.isna(lt) or pd.isna(old):
+                    ry_body += (f"<tr><td style='{_td}'>{c}</td>"
+                                f"<td style='{_td}' colspan='3'><i style='color:#c7cbd1;font-weight:400'>no series</i></td></tr>")
+                    continue
+                chg = lt - old
+                clr = C_LONG if chg >= 0 else C_SHORT
+                ry_body += (f"<tr><td style='{_td}'>{c}</td><td style='{_td}'>{lt:.1f}%</td>"
+                            f"<td style='{_td}'>{old:.1f}%</td><td style='{_td};color:{clr}'>{chg:+.1f}%</td></tr>")
+            st.markdown(_table(["Commodity","Lt COT","Old COT","Change"], ry_body), unsafe_allow_html=True)
+
+        with col2:
+            st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
+                        "margin:14px 0 6px'>USDBRL MOVE</div>", unsafe_allow_html=True)
+            fx = load_brl()
+            if fx.empty or not rows:
+                st.info("No BRL series found.")
+            else:
+                ref_last_cot = rows[0][1]["last_cot_date"]
+                prev_cot = ref_last_cot - pd.Timedelta(days=7)
+                latest_fx_date = fx["Date"].iloc[-1]
+                latest_fx = float(fx["USDBRL"].iloc[-1])
+
+                def _asof(fxdf, d):
+                    m = pd.merge_asof(pd.DataFrame({"Date":[d]}), fxdf, on="Date", direction="backward")
+                    return float(m["USDBRL"].iloc[0]) if not m["USDBRL"].isna().iloc[0] else np.nan
+
+                px_last_cot = _asof(fx, ref_last_cot)
+                px_prev_cot = _asof(fx, prev_cot)
+
+                def _panel(title, new_lbl, new_val, old_lbl, old_val):
+                    if pd.isna(new_val) or pd.isna(old_val) or old_val == 0:
+                        return
+                    mv = (new_val / old_val - 1) * 100
+                    clr = C_LONG if mv >= 0 else C_SHORT
+                    st.markdown(
+                        f"<div style='border:1px solid #edeff3;border-radius:8px;padding:8px 12px;margin-bottom:8px'>"
+                        f"<div style='font-size:.6rem;color:#9ca3af;font-weight:700;letter-spacing:.03em;margin-bottom:4px'>{title}</div>"
+                        f"<table style='width:100%;font-size:.72rem'><tr>"
+                        f"<td style='color:#9ca3af'>{new_lbl}</td><td style='color:#9ca3af'>{old_lbl}</td><td style='color:#9ca3af'>% Move</td></tr>"
+                        f"<tr><td style='font-weight:700'>{new_val:.4f}</td><td style='font-weight:700'>{old_val:.4f}</td>"
+                        f"<td style='font-weight:700;color:{clr}'>{mv:+.2f}%</td></tr></table></div>",
+                        unsafe_allow_html=True)
+
+                _panel("LATEST BRL MOVE WRT LAST COT", latest_fx_date.strftime('%d %b %y'), latest_fx,
+                       ref_last_cot.strftime('%d %b %y'), px_last_cot)
+                _panel("BRL MOVE IN PREVIOUS COT WINDOW", ref_last_cot.strftime('%d %b %y'), px_last_cot,
+                       prev_cot.strftime('%d %b %y'), px_prev_cot)
+
+        st.markdown(f"<div style='margin-top:10px;font-size:.6rem;color:#c7cbd1'>Log: {LOG_FILE.name}</div>",
+                    unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════════════════════════════════
 # TAB 3 — POSITIONING (Recap + Spec/Commercial, per commodity)
 # ══════════════════════════════════════════════════════════════════════════
@@ -586,115 +660,19 @@ with tab_position:
         st.markdown(f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px'>{cards}</div>",
                     unsafe_allow_html=True)
 
-        sub_tab_recap, sub_tab_ls = st.tabs(["Net History", "Long / Short"])
-        with sub_tab_recap:
-            fig = go.Figure()
-            for name, lc, sc, nc in groups:
-                if nc not in sub.columns:
-                    continue
-                fig.add_trace(go.Scatter(x=sub["Date"], y=sub[nc]/1000, mode="lines",
-                                          name=name, line=dict(width=1.8)))
-            fig.update_layout(**_BASE, height=380,
-                title=dict(text=f"{COMM_NAMES[sel2]} — Net Positioning", font=dict(size=11, color="#374151"), x=0),
-                margin=dict(l=54, r=16, t=38, b=40),
-                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-                yaxis=dict(**_ax(), title_text="k lots"),
-                legend=dict(orientation="h", y=1.14, x=0, font=dict(size=9)))
-            st.plotly_chart(fig, width='stretch')
-        with sub_tab_ls:
-            gsel = st.radio("Category", [g[0] for g in groups], horizontal=True, key=f"pos_cat_{sel2}")
-            _, lc, sc, nc = next(g for g in groups if g[0] == gsel)
-            fig = go.Figure()
-            if lc in sub.columns:
-                fig.add_trace(go.Scatter(x=sub["Date"], y=sub[lc]/1000, name="Long", line=dict(color=C_LONG, width=1.6)))
-            if sc in sub.columns:
-                fig.add_trace(go.Scatter(x=sub["Date"], y=-sub[sc]/1000, name="Short", line=dict(color=C_SHORT, width=1.6)))
-            if nc in sub.columns:
-                fig.add_trace(go.Scatter(x=sub["Date"], y=sub[nc]/1000, name="Net", line=dict(color=color, width=2, dash="dot")))
-            fig.update_layout(**_BASE, height=380,
-                title=dict(text=f"{gsel} — Long / Short / Net", font=dict(size=11, color="#374151"), x=0),
-                margin=dict(l=54, r=16, t=38, b=40),
-                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-                yaxis=dict(**_ax(), title_text="k lots"),
-                legend=dict(orientation="h", y=1.14, x=0, font=dict(size=9)))
-            st.plotly_chart(fig, width='stretch')
-
-# ══════════════════════════════════════════════════════════════════════════
-# TAB 4 — DIAGNOSTICS  (regression table, Roll Yield, USDBRL)
-# ══════════════════════════════════════════════════════════════════════════
-with tab_diag:
-    st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
-                "margin-bottom:6px'>REGRESSION DIAGNOSTICS</div>", unsafe_allow_html=True)
-    diag = pd.DataFrame([{
-        "Commodity": c, "β (lots/1%)": f"{res['beta']:+.1f}", "α": f"{res['alpha']:+.1f}",
-        "R²": f"{res['r2']:.2f}", "n obs": res["n"],
-    } for c, res, r in rows]).set_index("Commodity")
-    st.dataframe(diag, width='stretch', height=246)
-
-    col1, col2 = st.columns([1.3, 1])
-    with col1:
-        st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
-                    "margin:14px 0 6px'>ROLL YIELD — actual, week on week</div>", unsafe_allow_html=True)
-        ry_all = load_roll_yield()
-        ry_body = ""
-        for c, res, r in rows:
-            ry_code = ROLLYIELD_MAP.get(c)
-            lt = old = np.nan
-            if ry_code and not ry_all.empty:
-                s = ry_all[ry_all["Commodity"] == ry_code].sort_values("Date")
-                if not s.empty:
-                    lt = pd.merge_asof(pd.DataFrame({"Date":[res["last_cot_date"]]}), s,
-                                        on="Date", direction="backward")["roll_yield_pct"].iloc[0]
-                    old_date = res["last_cot_date"] - pd.Timedelta(days=7)
-                    old = pd.merge_asof(pd.DataFrame({"Date":[old_date]}), s,
-                                         on="Date", direction="backward")["roll_yield_pct"].iloc[0]
-            if pd.isna(lt) or pd.isna(old):
-                ry_body += (f"<tr><td style='{_td}'>{c}</td>"
-                            f"<td style='{_td}' colspan='3'><i style='color:#c7cbd1;font-weight:400'>no series</i></td></tr>")
+        # Every group's Net line on one chart — click a legend entry to
+        # isolate it (Plotly default), so no separate Long/Short view is needed.
+        fig = go.Figure()
+        for name, lc, sc, nc in groups:
+            if nc not in sub.columns:
                 continue
-            chg = lt - old
-            clr = C_LONG if chg >= 0 else C_SHORT
-            ry_body += (f"<tr><td style='{_td}'>{c}</td><td style='{_td}'>{lt:.1f}%</td>"
-                        f"<td style='{_td}'>{old:.1f}%</td><td style='{_td};color:{clr}'>{chg:+.1f}%</td></tr>")
-        st.markdown(_table(["Commodity","Lt COT","Old COT","Change"], ry_body), unsafe_allow_html=True)
+            fig.add_trace(go.Scatter(x=sub["Date"], y=sub[nc]/1000, mode="lines",
+                                      name=name, line=dict(width=1.8)))
+        fig.update_layout(**_BASE, height=400,
+            title=dict(text=f"{COMM_NAMES[sel2]} — Net Positioning", font=dict(size=11, color="#374151"), x=0),
+            margin=dict(l=54, r=16, t=38, b=40),
+            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+            yaxis=dict(**_ax(), title_text="k lots"),
+            legend=dict(orientation="h", y=1.12, x=0, font=dict(size=9)))
+        st.plotly_chart(fig, width='stretch')
 
-    with col2:
-        st.markdown("<div style='font-size:.68rem;font-weight:700;color:#9ca3af;letter-spacing:.03em;"
-                    "margin:14px 0 6px'>USDBRL MOVE</div>", unsafe_allow_html=True)
-        fx = load_brl()
-        if fx.empty or not rows:
-            st.info("No BRL series found.")
-        else:
-            ref_last_cot = rows[0][1]["last_cot_date"]
-            prev_cot = ref_last_cot - pd.Timedelta(days=7)
-            latest_fx_date = fx["Date"].iloc[-1]
-            latest_fx = float(fx["USDBRL"].iloc[-1])
-
-            def _asof(fxdf, d):
-                m = pd.merge_asof(pd.DataFrame({"Date":[d]}), fxdf, on="Date", direction="backward")
-                return float(m["USDBRL"].iloc[0]) if not m["USDBRL"].isna().iloc[0] else np.nan
-
-            px_last_cot = _asof(fx, ref_last_cot)
-            px_prev_cot = _asof(fx, prev_cot)
-
-            def _panel(title, new_lbl, new_val, old_lbl, old_val):
-                if pd.isna(new_val) or pd.isna(old_val) or old_val == 0:
-                    return
-                mv = (new_val / old_val - 1) * 100
-                clr = C_LONG if mv >= 0 else C_SHORT
-                st.markdown(
-                    f"<div style='border:1px solid #edeff3;border-radius:8px;padding:8px 12px;margin-bottom:8px'>"
-                    f"<div style='font-size:.6rem;color:#9ca3af;font-weight:700;letter-spacing:.03em;margin-bottom:4px'>{title}</div>"
-                    f"<table style='width:100%;font-size:.72rem'><tr>"
-                    f"<td style='color:#9ca3af'>{new_lbl}</td><td style='color:#9ca3af'>{old_lbl}</td><td style='color:#9ca3af'>% Move</td></tr>"
-                    f"<tr><td style='font-weight:700'>{new_val:.4f}</td><td style='font-weight:700'>{old_val:.4f}</td>"
-                    f"<td style='font-weight:700;color:{clr}'>{mv:+.2f}%</td></tr></table></div>",
-                    unsafe_allow_html=True)
-
-            _panel("LATEST BRL MOVE WRT LAST COT", latest_fx_date.strftime('%d %b %y'), latest_fx,
-                   ref_last_cot.strftime('%d %b %y'), px_last_cot)
-            _panel("BRL MOVE IN PREVIOUS COT WINDOW", ref_last_cot.strftime('%d %b %y'), px_last_cot,
-                   prev_cot.strftime('%d %b %y'), px_prev_cot)
-
-    st.markdown(f"<div style='margin-top:10px;font-size:.6rem;color:#c7cbd1'>Log: {LOG_FILE.name}</div>",
-                unsafe_allow_html=True)
