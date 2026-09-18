@@ -43,7 +43,10 @@ st.markdown("""
     background:#ffffff !important; color:#1a1a1a !important;
   }
   [data-testid="stHeader"] { background:transparent !important; }
-  .block-container { padding-top:1.2rem !important; max-width:1700px; }
+  .block-container { padding-top:.6rem !important; padding-bottom:.6rem !important; max-width:1700px; }
+  div[data-testid="stExpander"] summary { padding:2px 8px !important; min-height:0 !important; }
+  div[data-testid="stExpander"] summary p { font-size:.74rem !important; }
+  div[data-testid="stVerticalBlock"] { gap:.35rem !important; }
 </style>""", unsafe_allow_html=True)
 
 # ── Paths ──────────────────────────────────────────────────────────────────
@@ -281,10 +284,10 @@ def resolve_row(res, log_df):
 # BUILD TABLE
 # ══════════════════════════════════════════════════════════════════════════
 st.markdown(
-    "<div style='background:#111827;color:#fff;padding:14px 20px;border-radius:8px 8px 0 0;"
-    "font-size:1.05rem;font-weight:700;letter-spacing:.02em'>SPEC CHANGE PREDICTION &amp; ACTUAL</div>"
-    "<div style='background:#f3f4f6;color:#4b5563;padding:8px 20px;font-size:.78rem;"
-    "border-radius:0 0 8px 8px;margin-bottom:18px'>"
+    "<div style='background:#111827;color:#fff;padding:6px 14px;border-radius:6px 6px 0 0;"
+    "font-size:.86rem;font-weight:700;letter-spacing:.02em'>SPEC CHANGE PREDICTION &amp; ACTUAL</div>"
+    "<div style='background:#f3f4f6;color:#4b5563;padding:4px 14px;font-size:.66rem;"
+    "border-radius:0 0 6px 6px;margin-bottom:6px'>"
     "NYC (KC/CC/SB/CT) = Spec + Non Rep + Index &nbsp;&middot;&nbsp; "
     "Europe (RC/LCC/LSU) = Managed Money + Other + Non Rep &nbsp;&middot;&nbsp; "
     "Prediction = &beta;&times;&Delta;Px% (last COT Tue &rarr; latest Tue close) + &alpha;, fit on weekly history</div>",
@@ -299,10 +302,10 @@ for c in COMMODITIES:
     resolved, log_df = resolve_row(res, log_df)
     rows.append((c, res, resolved))
 
-_th = ("padding:7px 12px;font-size:.62rem;font-weight:700;color:#94a3b8;letter-spacing:.05em;"
+_th = ("padding:3px 8px;font-size:.58rem;font-weight:700;color:#94a3b8;letter-spacing:.03em;"
        "border:1px solid #e5e7eb;background:#f9fafb;text-align:left;white-space:nowrap")
-_td = ("padding:8px 12px;font-size:.83rem;font-weight:600;color:#1e293b;"
-       "border:1px solid #e5e7eb;white-space:nowrap")
+_td = ("padding:3px 8px;font-size:.72rem;font-weight:600;color:#1e293b;"
+       "border:1px solid #e5e7eb;white-space:nowrap;line-height:1.3")
 
 html = "<table style='border-collapse:collapse;width:100%;font-family:-apple-system,sans-serif'><tr>"
 for h in ["Spec Inclusion","Commodity","COT Date","Spec Net","Prediction","Actual",
@@ -351,9 +354,7 @@ with st.expander("Regression diagnostics (β, α, R², n obs)"):
         "Commodity": c, "β (k lots / 1%)": f"{res['beta']:+.2f}", "α": f"{res['alpha']:+.2f}",
         "R²": f"{res['r2']:.2f}", "n obs": res["n"],
     } for c, res, r in rows]).set_index("Commodity")
-    st.dataframe(diag, width='stretch')
-
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    st.dataframe(diag, width='stretch', height=246)
 
 # ══════════════════════════════════════════════════════════════════════════
 # ROLL YIELD  +  BRL PANELS
@@ -361,7 +362,7 @@ st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 col1, col2 = st.columns([1.3, 1])
 
 with col1:
-    st.markdown("<div style='font-size:.88rem;font-weight:700;color:#374151;margin-bottom:6px'>ROLL YIELD — actual, week on week</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:.7rem;font-weight:700;color:#374151;margin:4px 0 3px;letter-spacing:.03em'>ROLL YIELD — actual, week on week</div>", unsafe_allow_html=True)
     ry_all = load_roll_yield()
     ry_rows = []
     for c, res, r in rows:
@@ -391,7 +392,7 @@ with col1:
     st.markdown(ry_html, unsafe_allow_html=True)
 
 with col2:
-    st.markdown("<div style='font-size:.88rem;font-weight:700;color:#374151;margin-bottom:6px'>USDBRL MOVE</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:.7rem;font-weight:700;color:#374151;margin:4px 0 3px;letter-spacing:.03em'>USDBRL MOVE</div>", unsafe_allow_html=True)
     fx = load_brl()
     if fx.empty or not rows:
         st.info("No BRL series found.")
@@ -417,12 +418,12 @@ with col2:
             mv = (new_val / old_val - 1) * 100
             clr = "#16a34a" if mv >= 0 else "#dc2626"
             st.markdown(
-                f"<div style='border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:10px'>"
-                f"<div style='font-size:.68rem;color:#9ca3af;font-weight:700;letter-spacing:.04em;margin-bottom:6px'>{title}</div>"
-                f"<table style='width:100%;font-size:.8rem'><tr>"
-                f"<td style='color:#6b7280'>{new_lbl}</td><td style='color:#6b7280'>{old_lbl}</td><td style='color:#6b7280'>% Move</td></tr>"
-                f"<tr><td style='font-weight:700'>{new_val:.4f}</td><td style='font-weight:700'>{old_val:.4f}</td>"
-                f"<td style='font-weight:700;color:{clr}'>{mv:+.2f}%</td></tr></table></div>",
+                f"<div style='border:1px solid #e5e7eb;border-radius:6px;padding:4px 10px;margin-bottom:5px'>"
+                f"<div style='font-size:.58rem;color:#9ca3af;font-weight:700;letter-spacing:.03em;margin-bottom:2px'>{title}</div>"
+                f"<table style='width:100%;font-size:.7rem'><tr>"
+                f"<td style='color:#6b7280;padding:1px 0'>{new_lbl}</td><td style='color:#6b7280;padding:1px 0'>{old_lbl}</td><td style='color:#6b7280;padding:1px 0'>% Move</td></tr>"
+                f"<tr><td style='font-weight:700;padding:1px 0'>{new_val:.4f}</td><td style='font-weight:700;padding:1px 0'>{old_val:.4f}</td>"
+                f"<td style='font-weight:700;color:{clr};padding:1px 0'>{mv:+.2f}%</td></tr></table></div>",
                 unsafe_allow_html=True)
 
         _panel("LATEST BRL MOVE WRT LAST COT",
@@ -433,7 +434,7 @@ with col2:
                prev_cot.strftime('%d-%b-%y'), px_prev_cot)
 
 st.markdown(
-    "<div style='margin-top:18px;font-size:.72rem;color:#9ca3af'>"
+    "<div style='margin-top:4px;font-size:.6rem;color:#9ca3af'>"
     f"Log: {LOG_FILE.name} &middot; {len(log_df)} logged predictions &middot; "
     "refresh weekly once new COT data lands to see rows flip from Awaiting to Resolved.</div>",
     unsafe_allow_html=True)
