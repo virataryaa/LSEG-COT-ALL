@@ -903,13 +903,12 @@ def render_commercial(d, report, color):
 
     unit = "k lots"
 
-    with _exp("Seasonality", expanded=False):
-        seas = [(lc, C_LONG, "Long"), (sc, C_SHORT, "Short"), (nc, C_NET, "Net")]
-        avail_s = [(col, clr, name) for col, clr, name in seas if col in d.columns]
-        scols = st.columns(len(avail_s))
-        for ch, (col, clr, name) in zip(scols, avail_s):
-            with ch:
-                _chart(seasonal(d, col, clr, f"{lbl} {name}"), width='stretch')
+    seas = [(lc, C_LONG, "Long"), (sc, C_SHORT, "Short"), (nc, C_NET, "Net")]
+    avail_s = [(col, clr, name) for col, clr, name in seas if col in d.columns]
+    scols = st.columns(len(avail_s))
+    for ch, (col, clr, name) in zip(scols, avail_s):
+        with ch:
+            _chart(seasonal(d, col, clr, f"{lbl} {name}"), width='stretch')
 
     show_px = rollex_toggle("comm_show_px")
 
@@ -1784,6 +1783,10 @@ _RECAP_GROUP_BG = {
     "SPREAD":          "#fed7aa",
     "SP":              "#fed7aa",
     "MM+O+NR":         "#a7f3d0",
+    "L+S":             "#a7f3d0",
+    "L+S+I":           "#99f6e4",
+    "Δ 1w Long":       "#f9a8d4",
+    "Δ 1w Short":      "#f9a8d4",
     "OI":              "#e5e7eb",
     "OI · k lots":     "#e5e7eb",
     "Δ 1w":            "#f9a8d4",
@@ -1861,25 +1864,24 @@ _RECAP_CSS = """
 """
 
 _COLUMN_TOOLTIPS = {
-    ("NET", "Large+Small"):      "Large Spec Net + Non-Rep Net",
-    ("NET", "Lrg+Sml+Idx"):     "Large Spec Net + Non-Rep Net + Index Net",
+    ("NET", "L+S"):              "Large Spec Net + Non-Rep Net",
+    ("NET", "L+S+I"):            "Large Spec Net + Non-Rep Net + Index Net",
     ("MM+O+NR", "Long"):              "MM Long + Other Long + Non-Rep Long",
     ("MM+O+NR", "Short"):             "MM Short + Other Short + Non-Rep Short",
     ("NET", "MM+O+NR"):               "MM Net + Other Net + Non-Rep Net",
     ("NET", "Rest"):                  "Other Net + Non-Rep Net",
     ("NET", "MM"):                    "Managed Money Net",
     ("NET", "Comm"):                  "Producer/Commercial Net",
-    ("Gross Positions", "L+S Long"):  "Large Long + Small Long (Spec + Non-Rep)",
-    ("Gross Positions", "L+S Short"): "Large Short + Small Short (Spec + Non-Rep)",
-    ("Gross Positions", "L+S+I Long"):  "Large + Small + Index Long (all ex-Commercial)",
-    ("Gross Positions", "L+S+I Short"): "Large + Small + Index Short (all ex-Commercial)",
+    ("L+S", "Long"):    "Large Long + Small Long (Spec + Non-Rep)",
+    ("L+S", "Short"):   "Large Short + Small Short (Spec + Non-Rep)",
+    ("L+S+I", "Long"):  "Large + Small + Index Long (all ex-Commercial)",
+    ("L+S+I", "Short"): "Large + Small + Index Short (all ex-Commercial)",
 }
 
 # Sub-group separators within Gross Positions (medium border before each new pair)
 _RECAP_COL_SUBSEP = {
-    ("Gross Positions", "L+S Long"),      # CIT: after Large pair
-    ("Gross Positions", "Index Long"),    # CIT: after L+S pair
-    ("Gross Positions", "L+S+I Long"),    # CIT: after Index pair
+    ("Gross Positions", "Small Long"),    # CIT: after Large pair
+    ("Gross Positions", "Index Long"),    # CIT: after Small pair
     ("Gross Positions", "Comm Long"),     # CIT + Disagg: start of commercial
     ("Gross Positions", "Other Long"),    # Disagg: after MM pair
     ("Gross Positions", "Non-Rep Long"),  # Disagg: after Other pair
@@ -1889,8 +1891,10 @@ _RECAP_COL_SUBSEP = {
 
 def _recap_html(df, signed=False, change_table=False, scroll=False, signed_groups=None,
                 pct_groups=None, pct_subcols=None, signed_rows=None, z_rows=None, max_height=None,
-                decimals=1):
+                decimals=None):
     if df.empty: return ""
+    if decimals is None:  # global sidebar toggle: whole lots by default
+        decimals = 1 if globals().get("show_hist_decimals", False) else 0
     cols = list(df.columns)
     # Build group spans
     groups, prev = [], None
@@ -1994,21 +1998,23 @@ def _build_recap_df(d, report):
         for src, dst in [("Spec Long","Large Long"),("Spec Short","Large Short"),
                          ("Non Rep Long","Small Long"),("Non Rep Short","Small Short")]:
             if src in d.columns: cols[("Gross Positions", dst)] = gc(src) / 1000
-        cols[("Gross Positions", "L+S Long")]    = (gc("Spec Long") + gc("Non Rep Long"))  / 1000
-        cols[("Gross Positions", "L+S Short")]   = (gc("Spec Short")+ gc("Non Rep Short")) / 1000
         for src, dst in [("Index Long","Index Long"),("Index Short","Index Short")]:
             if src in d.columns: cols[("Gross Positions", dst)] = gc(src) / 1000
-        cols[("Gross Positions", "L+S+I Long")]  = (gc("Spec Long") + gc("Non Rep Long")  + gc("Index Long"))  / 1000
-        cols[("Gross Positions", "L+S+I Short")] = (gc("Spec Short")+ gc("Non Rep Short") + gc("Index Short")) / 1000
         for src, dst in [("Comm Long","Comm Long"),("Comm Short","Comm Short")]:
             if src in d.columns: cols[("Gross Positions", dst)] = gc(src) / 1000
+
+        # Aggregations come after the raw gross legs (same layout as Disagg)
+        cols[("L+S", "Long")]    = (gc("Spec Long") + gc("Non Rep Long"))  / 1000
+        cols[("L+S", "Short")]   = (gc("Spec Short")+ gc("Non Rep Short")) / 1000
+        cols[("L+S+I", "Long")]  = (gc("Spec Long") + gc("Non Rep Long")  + gc("Index Long"))  / 1000
+        cols[("L+S+I", "Short")] = (gc("Spec Short")+ gc("Non Rep Short") + gc("Index Short")) / 1000
 
         cols[("NET", "Large")]        = gc("Spec Net")   / 1000
         cols[("NET", "Small")]        = gc("Non Rep Net") / 1000
         cols[("NET", "Index")]        = gc("Index Net")   / 1000
         cols[("NET", "Comm")]         = gc("Comm Net")    / 1000
-        cols[("NET", "Large+Small")]  = (gc("Spec Net") + gc("Non Rep Net")) / 1000
-        cols[("NET", "Lrg+Sml+Idx")] = (gc("Spec Net") + gc("Non Rep Net") + gc("Index Net")) / 1000
+        cols[("NET", "L+S")]  = (gc("Spec Net") + gc("Non Rep Net")) / 1000
+        cols[("NET", "L+S+I")] = (gc("Spec Net") + gc("Non Rep Net") + gc("Index Net")) / 1000
 
         if "Spec Spread" in d.columns:
             cols[("SPREAD", "Spec Spread")] = gc("Spec Spread") / 1000
@@ -2180,20 +2186,27 @@ def _build_gross_legs_df(d, report):
             "Non-Rep":     gc("Non Rep Short")  / 1000,
         }
 
-    long_df  = pd.DataFrame(longs).iloc[::-1].iloc[:20]
-    short_df = pd.DataFrame(shorts).iloc[::-1].iloc[:20]
+    long_all  = pd.DataFrame(longs).iloc[::-1]
+    short_all = pd.DataFrame(shorts).iloc[::-1]
+    long_chg  = long_all.diff(-1).iloc[:20]    # vs the prior (older) week
+    short_chg = short_all.diff(-1).iloc[:20]
+    long_df  = long_all.iloc[:20]
+    short_df = short_all.iloc[:20]
     idx      = pd.to_datetime(d["Date"]).iloc[::-1].iloc[:20]
     tot_s    = (total_oi / 1000).iloc[::-1].iloc[:20].values
 
     long_pct  = long_df.div(tot_s, axis=0) * 100
     short_pct = short_df.div(tot_s, axis=0) * 100
 
-    combined = pd.concat([long_df[cats], short_df[cats], long_pct[cats], short_pct[cats]], axis=1)
+    combined = pd.concat([long_df[cats], short_df[cats], long_pct[cats], short_pct[cats],
+                          long_chg[cats], short_chg[cats]], axis=1)
     combined.columns = pd.MultiIndex.from_tuples(
         [("Longs · k lots",  c) for c in cats] +
         [("Shorts · k lots", c) for c in cats] +
         [("Long % OI",       c) for c in cats] +
-        [("Short % OI",      c) for c in cats]
+        [("Short % OI",      c) for c in cats] +
+        [("Δ 1w Long",       c) for c in cats] +
+        [("Δ 1w Short",      c) for c in cats]
     )
     combined.index = [f"{dt.day}-{dt.strftime('%b-%y')}" for dt in idx]
     return combined
@@ -2260,6 +2273,15 @@ def _summary_and_body(cols_dict, d_index, n=20):
     summary = pd.DataFrame([row_1w, row_4w], index=["+/-1w", "+/-4w"], columns=body.columns)
     body.index = [f"{dt.day}-{dt.strftime('%b-%y')}" for dt in body.index]
     return summary, body
+
+
+def _merge_summary_body(summary, body):
+    """One table: +/-1w, +/-4w rows on top of the dated rows, plus a per-row
+    weekly-change group. A single table keeps every column aligned."""
+    chg = body.diff(-1)
+    chg.columns = pd.MultiIndex.from_tuples([("Δ 1w", c[1]) for c in body.columns])
+    body2 = pd.concat([body, chg], axis=1)
+    return pd.concat([summary.reindex(columns=body2.columns), body2])
 
 
 def _build_traders_df(d, report):
@@ -2345,8 +2367,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
                                 max_height=148), unsafe_allow_html=True)
 
     with _exp("Historical positions  ·  k lots", expanded=True):
-        st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT,
-                                decimals=1 if show_hist_decimals else 0), unsafe_allow_html=True)
+        st.markdown(_recap_html(view, scroll=True, pct_subcols=_PX_PCT), unsafe_allow_html=True)
 
     with _exp("Weekly change  ·  k lots", expanded=True):
         chg = view.diff(-1)
@@ -2389,7 +2410,22 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
             "Long/Short include spreading positions. % columns are each leg divided by Total OI.</p>",
             unsafe_allow_html=True,
         )
-        st.markdown(_recap_html(gross_tbl, pct_groups={"Long % OI", "Short % OI"}, scroll=True), unsafe_allow_html=True)
+        st.markdown(_recap_html(gross_tbl, pct_groups={"Long % OI", "Short % OI"},
+                                signed_groups={"Δ 1w Long", "Δ 1w Short"}, scroll=True), unsafe_allow_html=True)
+
+    _sp_cols = ([("Large Spec", "Spec Spread")] if report == "CIT" else
+                [("MM", "MM Spread"), ("Other", "Other Spread"), ("Swap", "Swap Spread")])
+    _sp_cols = [(n, c) for n, c in _sp_cols if c in d.columns]
+    if _sp_cols and "Total OI" in d.columns:
+        with _exp("Spreading as % of total OI", expanded=False):
+            _oi = d["Total OI"].astype(float).replace(0, np.nan)
+            _clr = [C_NET, "#7c3aed", "#d97706"]
+            _tr = [{"trace": go.Scatter(
+                        x=d["Date"], y=(d[c].astype(float) / _oi * 100), name=n,
+                        line=dict(color=_clr[i % 3], width=2.0),
+                        hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{n} spread: %{{y:.1f}}% of OI<extra></extra>")}
+                   for i, (n, c) in enumerate(_sp_cols)]
+            _chart(timeseries(d, _tr, "Spreading  ·  % of total OI", "% of OI", price=False), width='stretch')
 
     nom_summary, nom_body = _build_nominal_df(d, commodity, report)
     if not nom_body.empty:
@@ -2403,20 +2439,23 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
                 f"{_spec_note}</div>",
                 unsafe_allow_html=True,
             )
-            st.markdown(_recap_html(nom_summary, signed=True), unsafe_allow_html=True)
-            st.markdown(_recap_html(nom_body, scroll=True), unsafe_allow_html=True)
+            st.markdown(_recap_html(_merge_summary_body(nom_summary, nom_body),
+                                    signed_rows=set(nom_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
 
     tr_summary, tr_body = _build_traders_df(d, report)
     if not tr_body.empty:
         with _exp("# of Traders", expanded=False):
-            st.markdown(_recap_html(tr_summary, signed=True), unsafe_allow_html=True)
-            st.markdown(_recap_html(tr_body, scroll=True), unsafe_allow_html=True)
+            st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
+                                    signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
 
     lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
     if not lpt_body.empty:
         with _exp("k lots / Trader  (avg position size per trader)", expanded=False):
-            st.markdown(_recap_html(lpt_summary, signed=True), unsafe_allow_html=True)
-            st.markdown(_recap_html(lpt_body, scroll=True), unsafe_allow_html=True)
+            st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
+                                    signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
 
     if report == "CIT":
         guide = """
@@ -2424,13 +2463,13 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
 
 **Small Long / Small Short** — Non-Reportable
 
-**L+S Long / L+S Short** — Large + Small gross (Non-Commercial + Non-Reportable)
+**L+S Long / Short** — Large + Small gross (Non-Commercial + Non-Reportable)
 
-**L+S+I Long / L+S+I Short** — Large + Small + Index gross (all ex-Commercial)
+**L+S+I Long / Short** — Large + Small + Index gross (all ex-Commercial)
 
-**Large+Small** — Non-Commercial Net + Non-Reportable Net (total non-index speculative net)
+**L+S (NET)** — Non-Commercial Net + Non-Reportable Net (total non-index speculative net)
 
-**Lrg+Sml+Idx** — Non-Commercial Net + Non-Reportable Net + Index Traders Net (everything ex-Commercial)
+**L+S+I (NET)** — Non-Commercial Net + Non-Reportable Net + Index Traders Net (everything ex-Commercial)
 """
     else:
         guide = """
@@ -4007,8 +4046,7 @@ def render_combined(commodity, start_date, end_date, color):
         with _exp("Historical positions  ·  k lots", expanded=True):
             disp = body_df.iloc[:20].copy()
             disp.index = [f"{dt.day}-{dt.strftime('%b-%y')}" if hasattr(dt,'day') else str(dt) for dt in disp.index]
-            st.markdown(_recap_html(disp, scroll=True,
-                                    decimals=1 if show_hist_decimals else 0), unsafe_allow_html=True)
+            st.markdown(_recap_html(disp, scroll=True), unsafe_allow_html=True)
 
         with _exp("Weekly change  ·  k lots", expanded=True):
             chg = body_df.diff(-1).iloc[:20].copy()
@@ -4282,7 +4320,7 @@ _DEFAULT_THRESH = {"KC": 2.0, "CC": 2.0, "SB": 5.0, "CT": 1.0,
 _GRID_ROWS = [["KC", "RC", "SB"], ["CC", "LCC", "CT"], ["LSU", None, None]]
 
 
-def _render_one_proximity_table(comm, study_weeks, cit_df, dag_df, start_date, end_date):
+def _render_one_proximity_table(comm, study_weeks, cit_df, dag_df, start_date, end_date, include_index=True):
     """Render a single ultra-compact proximity table for one commodity."""
     # Pick data + spec formula
     if comm in CIT_COMMS:
@@ -4292,7 +4330,8 @@ def _render_one_proximity_table(comm, study_weeks, cit_df, dag_df, start_date, e
         if "Crop" in src.columns: src = src[src["Crop"] == "All"]
         for c in ("Spec Net", "Non Rep Net", "Index Net"):
             if c not in src.columns: src[c] = 0
-        src["Spec"] = (src["Spec Net"] + src["Non Rep Net"] + src["Index Net"]) / 1000
+        src["Spec"] = (src["Spec Net"] + src["Non Rep Net"]
+                       + (src["Index Net"] if include_index else 0)) / 1000
     else:
         src = dag_df[(dag_df["Commodity"] == comm) &
                      (dag_df["Date"] >= pd.Timestamp(start_date)) &
@@ -4559,7 +4598,7 @@ def render_spec_proximity(start_date, end_date, commodity=None):
     )
 
     # ── Global study-window radio ─────────────────────────────────────────────
-    _c1, _c2 = st.columns([0.25, 0.75])
+    _c1, _c2, _c3 = st.columns([0.25, 0.4, 0.35])
     with _c1:
         window_lbl = st.radio(
             "Study window",
@@ -4570,6 +4609,9 @@ def render_spec_proximity(start_date, end_date, commodity=None):
     with _c2:
         scope = st.radio("Show", ["Selected commodity", "All commodities"],
                          index=0, horizontal=True, key="sp_scope") if commodity else "All commodities"
+    with _c3:
+        include_index = st.toggle("Include Index (KC / CC / SB / CT)", value=True, key="sp_incl_idx",
+                                  help="Off: Spec = Spec + Non Rep only. No effect on RC / LCC / LSU.")
     study_weeks = int(window_lbl.replace("w", ""))
 
     # Load both reports once
@@ -4577,7 +4619,7 @@ def render_spec_proximity(start_date, end_date, commodity=None):
     dag_df = load_disagg("F&O")
 
     if scope.startswith("Selected"):
-        _render_one_proximity_table(commodity, study_weeks, cit_df, dag_df, start_date, end_date)
+        _render_one_proximity_table(commodity, study_weeks, cit_df, dag_df, start_date, end_date, include_index)
         return
 
     # ── 3 x 3 grid ────────────────────────────────────────────────────────────
@@ -4587,7 +4629,7 @@ def render_spec_proximity(start_date, end_date, commodity=None):
             if comm is None:
                 continue
             with col:
-                _render_one_proximity_table(comm, study_weeks, cit_df, dag_df, start_date, end_date)
+                _render_one_proximity_table(comm, study_weeks, cit_df, dag_df, start_date, end_date, include_index)
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
 
@@ -4652,7 +4694,7 @@ with st.sidebar:
       .st-key-hist_decimal_toggle [data-baseweb="checkbox"]{transform:scale(.7);transform-origin:left center}
     </style>""", unsafe_allow_html=True)
     with st.container(key="hist_decimal_toggle"):
-        show_hist_decimals = st.toggle("Decimals in Historical positions", value=False, key="hist_decimals")
+        show_hist_decimals = st.toggle("Show 1 decimal (all tables)", value=False, key="hist_decimals")
 
 
 
@@ -4943,6 +4985,9 @@ def render_recap_charts(d, report, color, commodity):
             merged_ry  = pd.merge_asof(cot_sorted, ry_sorted[["Date","roll_yield_pct"]], on="Date", direction="backward")
 
             ry_vals = merged_ry["roll_yield_pct"].values.astype(float)
+            ry_dates = merged_ry["Date"].dt.strftime("%d %b %Y").values
+            ry_px    = (merged_ry["Px"].values.astype(float) if "Px" in merged_ry.columns
+                        else np.full(len(merged_ry), np.nan))
 
             if report == "CIT":
                 short_vals = ((gc("Spec Short") + gc("Non Rep Short")) / 1000).values.astype(float)
@@ -4958,6 +5003,7 @@ def render_recap_charts(d, report, color, commodity):
             def _ry_scatter(x, y, ylabel, title):
                 mask = ~(np.isnan(x) | np.isnan(y))
                 xm, ym = x[mask], y[mask]
+                cd = np.column_stack([ry_dates[mask], ry_px[mask]])
                 if len(xm) < 5:
                     return go.Figure()
                 # polynomial trendline degree 2
@@ -4975,14 +5021,16 @@ def render_recap_charts(d, report, color, commodity):
                 fig.add_trace(go.Scatter(
                     x=xm, y=ym, mode="markers",
                     marker=dict(color=color, size=6, opacity=0.65, line=dict(width=0.4, color="white")),
-                    hovertemplate="Roll Yield: %{x:.1f}%<br>" + ylabel.split(" (")[0] + ": %{y:.1f}k<extra></extra>",
+                    customdata=cd,
+                    hovertemplate="<b>%{customdata[0]}</b><br>Roll Yield: %{x:.1f}%<br>"
+                                  + ylabel.split(" (")[0] + ": %{y:.1f}k<br>Px: %{customdata[1]:.1f}<extra></extra>",
                     showlegend=False,
                 ))
                 # trendline
                 fig.add_trace(go.Scatter(
                     x=x_line, y=y_line, mode="lines",
                     line=dict(color=color, width=1.5, dash="dot"),
-                    showlegend=False,
+                    showlegend=False, hoverinfo="skip",
                 ))
                 # latest point
                 fig.add_trace(go.Scatter(
@@ -4991,7 +5039,8 @@ def render_recap_charts(d, report, color, commodity):
                     mode="markers",
                     marker=dict(color="#f97316", size=10, symbol="circle", line=dict(width=1.5, color="white")),
                     showlegend=False,
-                    hovertemplate="<b>Latest</b><br>Roll Yield: %{x:.1f}%<br>" + ylabel.split(" (")[0] + ": %{y:.1f}k<extra></extra>",
+                    customdata=[cd[-1]],
+                    hovertemplate="<b>Latest · %{customdata[0]}</b><br>Roll Yield: %{x:.1f}%<br>" + ylabel.split(" (")[0] + ": %{y:.1f}k<br>Px: %{customdata[1]:.1f}<extra></extra>",
                 ))
                 fig.add_annotation(
                     x=0.98, y=0.98, xref="paper", yref="paper",
