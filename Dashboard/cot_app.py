@@ -2012,7 +2012,6 @@ def _build_recap_df(d, report):
         cols[("NET", "Large")]        = gc("Spec Net")   / 1000
         cols[("NET", "Small")]        = gc("Non Rep Net") / 1000
         cols[("NET", "Index")]        = gc("Index Net")   / 1000
-        cols[("NET", "Comm")]         = gc("Comm Net")    / 1000
         cols[("NET", "L+S")]  = (gc("Spec Net") + gc("Non Rep Net")) / 1000
         cols[("NET", "L+S+I")] = (gc("Spec Net") + gc("Non Rep Net") + gc("Index Net")) / 1000
 
@@ -4608,7 +4607,7 @@ def render_spec_proximity(start_date, end_date, commodity=None):
         )
     with _c2:
         scope = st.radio("Show", ["Selected commodity", "All commodities"],
-                         index=0, horizontal=True, key="sp_scope") if commodity else "All commodities"
+                         index=1, horizontal=True, key="sp_scope") if commodity else "All commodities"
     with _c3:
         include_index = st.toggle("Include Index (KC / CC / SB / CT)", value=True, key="sp_incl_idx",
                                   help="Off: Spec = Spec + Non Rep only. No effect on RC / LCC / LSU.")
