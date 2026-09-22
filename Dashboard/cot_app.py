@@ -514,7 +514,7 @@ def _add_price(fig, d, secondary_y=True):
     fig.add_trace(go.Scatter(
         x=d["Date"], y=d["Px"], name="Rollex Px",
         line=dict(color=C_PRICE, width=1.2, dash="dot"), opacity=0.65,
-        hovertemplate="<b>%{x|%d %b %Y}</b><br>Rollex Px: %{y:.2f}<extra></extra>",
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>Rollex Px: %{y:.1f}<extra></extra>",
     ), secondary_y=secondary_y)
 
 def timeseries(d, series, title, ylabel, height=360, price=True):
@@ -597,7 +597,7 @@ def bars_combined(d, lc, sc, nc, title, color, n=13, price=True):
         px_vals = np.asarray(tail["Px"].iloc[1:], dtype=float)
         fig.add_trace(go.Scatter(x=dates, y=px_vals, name="Rollex Px", mode="lines",
             line=dict(color=C_PRICE, width=1.8),
-            hovertemplate="<b>%{x|%d %b %y}</b><br>Rollex Px: %{y:.2f}<extra></extra>"),
+            hovertemplate="<b>%{x|%d %b %y}</b><br>Rollex Px: %{y:.1f}<extra></extra>"),
             secondary_y=True)
 
     fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
@@ -723,7 +723,7 @@ def scatter_2d(d, x_col, y_col, color, title, xlabel, ylabel):
             colorscale=[[0,"rgba(200,210,230,0.5)"],[1,f"rgba({rv},{gv},{bv},0.85)"]],
             size=7, line=dict(width=0.5, color="white")),
         text=pd.to_datetime(dates).strftime("%Y-%m-%d"),
-        hovertemplate="<b>%{text}</b><br>X: %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+        hovertemplate="<b>%{text}</b><br>X: %{x:.1f}<br>Y: %{y:.1f}<extra></extra>",
         showlegend=False))
     fig.add_trace(go.Scatter(x=xl, y=sl*xl+ic, mode="lines",
         line=dict(color=color, width=1.6, dash="dash"), showlegend=False))
@@ -767,15 +767,15 @@ def scatter_3d(x, y, z, dates, color, title, xlabel, ylabel, zlabel, height=540)
             colorscale=[[0,"rgba(200,210,230,0.45)"],[1,f"rgba({r},{g},{b},0.9)"]],
             size=5, line=dict(width=0.6, color="white")),
         text=pd.to_datetime(dates).strftime("%Y-%m-%d"),
-        hovertemplate=(f"<b>%{{text}}</b><br>{xlabel}: %{{x:.2f}}<br>"
-                       f"{ylabel}: %{{y:.2f}}<br>{zlabel}: %{{z:.2f}}<extra></extra>"),
+        hovertemplate=(f"<b>%{{text}}</b><br>{xlabel}: %{{x:.1f}}<br>"
+                       f"{ylabel}: %{{y:.1f}}<br>{zlabel}: %{{z:.1f}}<extra></extra>"),
         showlegend=False))
     fig.add_trace(go.Scatter3d(x=[x[-1]], y=[y[-1]], z=[z[-1]], mode="markers",
         showlegend=False,
         marker=dict(symbol="diamond", size=10, color=C_SHORT,
                     line=dict(width=1.5, color="white")),
-        hovertemplate=(f"<b>Latest</b><br>{xlabel}: {x[-1]:.2f}<br>"
-                       f"{ylabel}: {y[-1]:.2f}<br>{zlabel}: {z[-1]:.2f}<extra></extra>")))
+        hovertemplate=(f"<b>Latest</b><br>{xlabel}: {x[-1]:.1f}<br>"
+                       f"{ylabel}: {y[-1]:.1f}<br>{zlabel}: {z[-1]:.1f}<extra></extra>")))
     corr_str = f"r(X,Y)={corr_xy:+.2f}  ·  r(X,Z)={corr_xz:+.2f}  ·  r(Y,Z)={corr_yz:+.2f}"
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -2941,7 +2941,7 @@ def render_analysis(d, report, color, commodity="KC"):
             colorscale=[[0,"#dc2626"],[0.45,"#fef2f2"],[0.5,"#f9fafb"],[0.55,"#f0fdf4"],[1,"#16a34a"]],
             zmid=0, zmin=-1, zmax=1,
             text=tv, texttemplate="%{text}", textfont=dict(size=9.5, color="#111"),
-            hovertemplate="<b>%{y}</b> vs <b>%{x}</b>: r=%{z:.3f}<extra></extra>",
+            hovertemplate="<b>%{y}</b> vs <b>%{x}</b>: r=%{z:.1f}<extra></extra>",
             colorbar=dict(title=dict(text="r", side="right"), thickness=12, len=0.72,
                           tickvals=[-1,-0.5,0,0.5,1], tickfont=dict(size=9)),
             xgap=2, ygap=2,
@@ -3027,7 +3027,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 marker_color=_bar_colors(vals, sigs, mode),
                 text=_bar_text(vals, fmt),
                 textposition="outside", textfont=dict(size=9, color="#374151"),
-                hovertemplate=f"<b>%{{y}}</b><br>{title_x} = %{{x:.4f}}<br>{hover_sfx}<extra></extra>",
+                hovertemplate=f"<b>%{{y}}</b><br>{title_x} = %{{x:.1f}}<br>{hover_sfx}<extra></extra>",
                 cliponaxis=False,
             ))
             if mode == "signed":
@@ -3044,18 +3044,18 @@ def render_analysis(d, report, color, commodity="KC"):
         _col_r2, _col_r, _col_b = st.columns(3)
         with _col_r2:
             _chart(
-                _bar_chart(rsqs, sig_rb, "R²", ".2f", "Variance explained vs Rollex %Δ",
+                _bar_chart(rsqs, sig_rb, "R²", ".1f", "Variance explained vs Rollex %Δ",
                            mode="unsigned"),
                 width='stretch',
             )
         with _col_r:
             _chart(
-                _bar_chart(corrs, sig_rb, "Pearson Correlation  (r)", "+.2f", "Correlation with Rollex %Δ"),
+                _bar_chart(corrs, sig_rb, "Pearson Correlation  (r)", "+.1f", "Correlation with Rollex %Δ"),
                 width='stretch',
             )
         with _col_b:
             _chart(
-                _bar_chart(betas, sig_rb, "β  (Rollex %Δ per 1k lot)", "+.2f",
+                _bar_chart(betas, sig_rb, "β  (Rollex %Δ per 1k lot)", "+.1f",
                            "% Rollex move per 1k lot weekly Δ"),
                 width='stretch',
             )
@@ -3168,7 +3168,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 if len(yv) == 0: continue
                 fig_box.add_trace(go.Box(
                     y=yv, name=f"{g}<br>(n={len(yv)})", marker_color=_gcolor[g],
-                    boxmean=True, hovertemplate="ΔPx%: %{y:.2f}%<extra></extra>"))
+                    boxmean=True, hovertemplate="ΔPx%: %{y:.1f}%<extra></extra>"))
             fig_box.update_layout(**_BASE, height=380, showlegend=False,
                 title=dict(text=f"{flow_pick}: Weekly Price Δ% by Flow Regime  ·  {long_col} / {short_col}",
                            font=dict(size=11, color="#374151"), x=0),
@@ -3249,7 +3249,7 @@ def render_analysis(d, report, color, commodity="KC"):
                         text=pd.to_datetime(gd).strftime("%d %b %Y"),
                         customdata=np.column_stack([
                             [f"{v:.1f}k" for v in gx],
-                            [f"{v:+.2f}%" for v in gy],
+                            [f"{v:+.1f}%" for v in gy],
                         ]),
                         hovertemplate=(f"<b>%{{text}}</b><br>{xlabel}: %{{customdata[0]}}<br>"
                                        "ΔPx%: %{customdata[1]}<extra></extra>"),
@@ -3306,7 +3306,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 customdata=np.column_stack([
                     [f"{v:+.1f}k" for v in dL_v],
                     [f"{v:+.1f}k" for v in dS_v],
-                    [f"{v:+.2f}%" for v in dPx_v],
+                    [f"{v:+.1f}%" for v in dPx_v],
                 ]),
                 hovertemplate="<b>%{text}</b><br>ΔLong: %{customdata[0]}<br>ΔShort: %{customdata[1]}<br>"
                               "ΔPx%: %{customdata[2]}<extra></extra>",
@@ -3620,7 +3620,7 @@ def render_correlation(d, report, color):
                             colorscale=[[0,"rgba(200,210,230,0.5)"],[1,f"rgba({rv},{gv},{bv},0.85)"]],
                             size=7,line=dict(width=0.5,color="white")),
                         text=pd.to_datetime(dates[mask]).strftime("%Y-%m-%d"),
-                        hovertemplate=f"<b>%{{text}}</b><br>Px: %{{x:.2f}}<br>{sel2}: %{{y:.1f}}k<extra></extra>",
+                        hovertemplate=f"<b>%{{text}}</b><br>Px: %{{x:.1f}}<br>{sel2}: %{{y:.1f}}k<extra></extra>",
                         showlegend=False))
                     fig2.add_trace(go.Scatter(x=xl,y=sl*xl+ic,mode="lines",
                         line=dict(color=color,width=1.6,dash="dash"),showlegend=False))
@@ -3862,7 +3862,7 @@ def render_comparison(commodity, start_date, end_date, color):
                 x=roll.index, y=roll.values, mode="lines",
                 line=dict(color=color, width=2.0),
                 fill="tozeroy", fillcolor=f"rgba({r},{g},{b},0.08)",
-                hovertemplate="<b>%{x|%d %b %Y}</b><br>Corr: %{y:.2f}<extra></extra>"))
+                hovertemplate="<b>%{x|%d %b %Y}</b><br>Corr: %{y:.1f}<extra></extra>"))
             fig_rc.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.12)")
             fig_rc.update_layout(
                 **_BASE, height=270,
@@ -5783,7 +5783,7 @@ def render_pain_trade(d, commodity, report, color, is_options):
                 textfont=dict(size=10, color=_PT_AMBER,
                               family="-apple-system,Helvetica Neue,sans-serif"),
                 showlegend=False,
-                hovertemplate=f"Latest Rollex %{{y:.2f}}<br>{latest_rx_str}<extra></extra>",
+                hovertemplate=f"Latest Rollex %{{y:.1f}}<br>{latest_rx_str}<extra></extra>",
             ), secondary_y=True)
 
     # X-axis padding: extend ~5 days past the latest Rollex date so the
@@ -5864,7 +5864,7 @@ def render_pain_trade(d, commodity, report, color, is_options):
         return [[round(float(v), 3), d] for v, d in zip(vals, _dates)]
 
     _htpl = (
-        "<b>%{fullData.name}</b>: %{customdata[0]:.2f}k contracts<br>"
+        "<b>%{fullData.name}</b>: %{customdata[0]:.1f}k contracts<br>"
         "Bucket: %{y}<br>"
         "COT: %{customdata[1]}"
         "<extra></extra>"
@@ -6519,7 +6519,7 @@ def render_zscore_matrix(commodity=None, report=None):
     m1, m2 = st.columns(2, gap="large")
     with m1:
         st.markdown("**Net — Z-score**")
-        st.markdown(_dist_zbar_table(level_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
+        st.markdown(_dist_zbar_table(level_rows, commodity), unsafe_allow_html=True)
     with m2:
         st.markdown("**Weekly Change — Z-score**")
         st.markdown(_dist_zbar_table(chg_rows, commodity, price_col=price_rows), unsafe_allow_html=True)
