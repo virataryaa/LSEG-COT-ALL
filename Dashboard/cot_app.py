@@ -1731,9 +1731,12 @@ def _build_net_traders_df(d, report):
 
 
 def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
-    """Decompose the weekly change in each gross leg (position = traders x avg size per trader):
-        Sign = change in # traders   x last week's avg size   (more/fewer people involved)
-        Size = change in avg size    x this week's # traders  (same people get bigger/smaller)
+    """Bennet (symmetric) decomposition of the weekly change in each gross leg
+    (position = traders x avg size per trader):
+        Sign = change in # traders x AVERAGE of last and this week's avg size  (more/fewer people involved)
+        Size = change in avg size  x AVERAGE of last and this week's # traders (same people bigger/smaller)
+    Each effect is valued at the mid-point of the two weeks, so the traders x size cross-term
+    is shared equally and the split does not depend on calculation order.
     Sign + Size == the weekly change in that leg exactly. Short legs are drawn negated
     (added shorts go below zero) so Total = change in NET (Long - Short), in k lots."""
     d = d.sort_values("Date").reset_index(drop=True)
@@ -1745,8 +1748,8 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
         n = pd.to_numeric(d[tcol], errors="coerce")
         pos = pd.to_numeric(d[pcol], errors="coerce")
         avg = pos / n.where(n > 0)
-        sign = n.diff() * avg.shift(1)
-        size = avg.diff() * n
+        sign = n.diff() * (avg + avg.shift(1)) / 2
+        size = avg.diff() * (n + n.shift(1)) / 2
         legs[name] = (sign / 1000, size / 1000)
     dates = d["Date"]
     keep = slice(-weeks, None)
@@ -1911,8 +1914,8 @@ def render_traders(d, report, color, commodity="KC"):
         _fss = _sign_size_fig(d, _lc, _sc, group)
         if _fss is not None:
             _chart(_fss, width='stretch')
-            st.caption("Sign = more/fewer traders got involved. Size = the same traders got bigger/smaller. "
-                       "Sign + Size = weekly change in each leg; shorts shown negative, Total = change in net.")
+            st.caption("Sign = more/fewer traders got involved. Size = the same traders got bigger/smaller (Bennet split: each effect "
+                       "valued at the two-week average). Sign + Size = weekly change in each leg; shorts negative, Total = change in net.")
 
     # 4 -- tables, all open by default
     tr_summary, tr_body = _build_traders_df(d, report)
