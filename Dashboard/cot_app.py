@@ -1870,18 +1870,23 @@ def render_traders(d, report, color, commodity="KC"):
             d[_tr] = d["Total OI"] - d[_nr]
     latest = d.iloc[-1]
 
-    # Control row (all controls at the top): group pills + seasonal-series pills
-    ctl_l, ctl_r = st.columns([1, 1])
-    with ctl_l:
-        group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp",
-                         label_visibility="collapsed")
+    def _sec(title, sub):
+        st.markdown(f"<div style='margin:22px 0 4px'><span style='font-size:1rem;font-weight:700;color:#0a2463'>{title}</span>"
+                    f"<div style='font-size:.78rem;color:#7a86a8;margin-top:1px'>{sub}</div></div>", unsafe_allow_html=True)
+
+    # Control row: every control at the top -- group, seasonal series, smoothing
+    ctl_a, ctl_b, ctl_c = st.columns([3, 2, 2])
+    with ctl_a:
+        group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp")
     sel_cols = [c for c in grp_map[group] if c in d.columns and d[c].notna().any()]
     nice     = [c.replace("Traders ", "") for c in sel_cols]
     if not sel_cols:
         st.info("No trader counts for this group."); return
-    with ctl_r:
-        pick = st.radio("Seasonal series", nice, horizontal=True, key="traders_seas_pick",
-                        label_visibility="collapsed")
+    with ctl_b:
+        pick = st.radio("Seasonal series", nice, horizontal=True, key="traders_seas_pick")
+    with ctl_c:
+        _smooth = st.radio("Smoothing (weeks avg)", [1, 4, 8], horizontal=True, key="traders_smooth",
+                           format_func=lambda w: f"{w}w")
     pcol = sel_cols[nice.index(pick)] if pick in nice else sel_cols[0]
     ppos = pcol.replace("Traders ", "")
 
@@ -1891,7 +1896,8 @@ def render_traders(d, report, color, commodity="KC"):
         return C_LONG if "long" in n else C_SHORT if "short" in n else "#8a94a8" if "spread" in n else NAVY
     clrs = [_clr(n) for n in nice]
 
-    # 1 -- line charts side by side
+    # 1 -- where are we now: levels + seasonality
+    _sec("Where are we now", "Number of traders and average position per trader, with seasonality")
     c1, c2 = st.columns(2)
     with c1:
         fig = go.Figure()
@@ -1935,34 +1941,11 @@ def render_traders(d, report, color, commodity="KC"):
             _chart(_seasonal_series_fig(d["Date"], lpt_s, f"k lots per trader seasonality — {pick}",
                                         "k lots / trader", "%{y:.1f}"), width='stretch')
 
-    # 3 -- weekly-change bars (uncollapsed), beneath the seasonality
-    cols_w = st.columns(min(len(sel_cols), 3))
-    for i, (col, name) in enumerate(zip(sel_cols, nice)):
-        with cols_w[i % 3]:
-            chg = d[col].diff().tail(13)
-            dates_b = d["Date"].tail(13)
-            fb = go.Figure(go.Bar(x=dates_b, y=chg,
-                marker=dict(color=[C_LONG if v >= 0 else C_SHORT for v in chg],
-                            opacity=0.82, line=dict(width=0)),
-                hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>Δ: %{{y:+.0f}}<extra></extra>"))
-            fb.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
-            fb.update_layout(**_BASE, height=240,
-                title=dict(text=f"{name} — weekly Δ", font=dict(size=10, color="#0a2463"), x=0),
-                margin=dict(l=40, r=8, t=32, b=60), showlegend=False,
-                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-                yaxis=dict(**_ax()))
-            _chart(fb, width='stretch')
-
-    # 3b -- Sign vs Size decomposition of the weekly change (Long and Short legs; Spread left out)
+    # 2 -- what moved and why: Sign vs Size (Long and Short legs; Spread left out)
     _lc = next((c for c in sel_cols if c.endswith(" Long")), None)
     _sc = next((c for c in sel_cols if c.endswith(" Short")), None)
     if _lc and _sc:
-        _sm_l, _sm_r = st.columns([1, 5])
-        with _sm_l:
-            st.markdown("<div style='font-size:.72rem;color:#5a6688;margin:6px 0 2px'>Smoothing (weeks avg)</div>",
-                        unsafe_allow_html=True)
-            _smooth = st.radio("Smoothing", [1, 4, 8], horizontal=True, key="traders_smooth",
-                               format_func=lambda w: f"{w}w", label_visibility="collapsed")
+        _sec("What moved, and why", "Did more traders get involved (Sign), or did the same traders get bigger (Size)?")
         _fss = _sign_size_fig(d, _lc, _sc, group, smooth=_smooth)
         if _fss is not None:
             _chart(_fss, width='stretch')
@@ -1977,7 +1960,8 @@ def render_traders(d, report, color, commodity="KC"):
                 with _dc2:
                     _chart(_drv[1], width='stretch')
 
-    # 4 -- tables, all open by default
+    # 3 -- numbers: tables, all open by default
+    _sec("The numbers", "Trader counts, average size per trader and net traders, with weekly change")
     tr_summary, tr_body = _build_traders_df(d, report)
     if not tr_body.empty:
         with _exp("# of Traders", expanded=True):
