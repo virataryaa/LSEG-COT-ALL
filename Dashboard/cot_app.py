@@ -1812,6 +1812,13 @@ def render_traders(d, report, color, commodity="KC"):
         return
 
     d = d.sort_values("Date").reset_index(drop=True)
+    # The CIT report has no Total-Reportable position column. By CFTC definition it is
+    # Total OI - Non-Reportable (identical to the Disagg file's own column, +/-1 lot rounding),
+    # so derive it -- that is what lets k lots per trader work for "All Reportable".
+    for _side in ("Long", "Short"):
+        _tr, _nr = f"Tot Rept {_side}", f"Non Rep {_side}"
+        if _tr not in d.columns and "Total OI" in d.columns and _nr in d.columns:
+            d[_tr] = d["Total OI"] - d[_nr]
     latest = d.iloc[-1]
 
     # Control row (all controls at the top): group pills + seasonal-series pills
