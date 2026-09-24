@@ -29,30 +29,30 @@ st.markdown("""
   div[data-testid="stExpander"] {
     border:1px solid #e0e4ed !important; border-radius:7px !important;
   }
-  div[data-testid="stTabs"] button { font-size:0.81rem !important; font-weight:500; }
-  div[data-testid="stTabs"] button:nth-child(8),
-  div[data-testid="stTabs"] button:nth-child(9),
-  div[data-testid="stTabs"] button:nth-child(10),
-  div[data-testid="stTabs"] button:nth-child(11) {
-    background-color:#f3f4f6 !important;
-    border-radius:6px 6px 0 0 !important;
-  }
-  div[data-testid="stTabs"] button:nth-child(12) {
-    background-color:#fce7f3 !important;
-    border-radius:6px 6px 0 0 !important;
-  }
-  div[data-testid="stTabs"] button:nth-child(12) p {
-    color:#be185d !important; font-weight:600 !important;
-  }
-  div[data-testid="stTabs"] button:nth-child(13) {
-    background-color:#ede9fe !important;
-    border-radius:6px 6px 0 0 !important;
-  }
-  div[data-testid="stTabs"] button:nth-child(13) p {
-    color:#6d28d9 !important; font-weight:600 !important;
-  }
   hr { border:none !important; border-top:1px solid #e8e8ed !important; margin:.5rem 0 !important; }
   [data-testid="stRadio"] label { font-size:.82rem !important; }
+  h1, h2, h3, h4, h5, h6 { color: #0a2463 !important; }
+
+  /* Pill / segmented-control tabs */
+  .stTabs [data-baseweb="tab-list"] { background:#eef0f6; padding:4px; border-radius:999px; gap:4px; display:inline-flex; width:fit-content; max-width:100%; }
+  .stTabs [data-baseweb="tab"] { background:transparent !important; color:#5a6688 !important; border-radius:999px !important;
+      padding:8px 20px !important; font-weight:600; border:none !important; margin:0 !important; height:auto !important; }
+  .stTabs [data-baseweb="tab"] p, .stTabs [data-baseweb="tab"] span { font-size:0.85rem !important; font-weight:600 !important; color:inherit !important; }
+  .stTabs [aria-selected="true"] { background:#0a2463 !important; color:#ffffff !important; }
+  .stTabs [data-baseweb="tab-highlight"] { display:none !important; }
+  .stTabs [data-baseweb="tab-border"] { display:none !important; }
+
+  /* Radio as pill / segmented control */
+  div[role="radiogroup"] { background:#eef0f6; padding:4px; border-radius:999px; gap:2px; display:inline-flex; flex-wrap:wrap; }
+  div[role="radiogroup"] label { background:transparent !important; border-radius:999px !important; padding:4px 12px !important; margin:0 !important; }
+  div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child { display:none; }
+  div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p { font-size:12px !important; color:#5a6688 !important; }
+  div[role="radiogroup"] label:has(input:checked) { background:#0a2463 !important; }
+  div[role="radiogroup"] label:has(input:checked) div[data-testid="stMarkdownContainer"] p { color:#ffffff !important; font-weight:600; }
+
+  /* Sidebar title (hero) */
+  .sb-title { font-family:'Fraunces', Georgia, serif; font-size:1.5rem; font-weight:600; color:#0a2463 !important; margin-bottom:2px; }
+  .sb-caption { font-size:11px; color:#7a86a8 !important; margin-bottom:16px; line-height:1.4; }
 </style>""", unsafe_allow_html=True)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -4636,10 +4636,7 @@ def render_spec_proximity(start_date, end_date, commodity=None):
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown(
-        "<div style='font-size:1.05rem;font-weight:700;color:#1a56db;"
-        "margin-bottom:16px;letter-spacing:.01em'>COMPREHENSIVE COT</div>",
-        unsafe_allow_html=True)
+    st.markdown("<div class='sb-title'>COMPREHENSIVE COT</div><div class='sb-caption'>CFTC positioning across Legacy, CIT, Disaggregated and TFF reports.</div>", unsafe_allow_html=True)
 
     commodity = st.selectbox("Commodity", list(COMM_NAMES.keys()),
                              format_func=lambda x: COMM_NAMES[x], key="sb_commodity")
