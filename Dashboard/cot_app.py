@@ -29,6 +29,13 @@ st.markdown("""
   div[data-testid="stExpander"] {
     border:1px solid #e0e4ed !important; border-radius:7px !important;
   }
+  h1, h2, h3, h4, h5, h6 { color:#0a2463 !important; }
+  div[role="radiogroup"] { background:#eef0f6; padding:4px; border-radius:999px; gap:2px; display:inline-flex; flex-wrap:wrap; }
+  div[role="radiogroup"] label { background:transparent !important; border-radius:999px !important; padding:4px 12px !important; margin:0 !important; }
+  div[role="radiogroup"] label[data-baseweb="radio"] > div:first-child { display:none; }
+  div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p { font-size:12px !important; color:#5a6688 !important; }
+  div[role="radiogroup"] label:has(input:checked) { background:#0a2463 !important; }
+  div[role="radiogroup"] label:has(input:checked) div[data-testid="stMarkdownContainer"] p { color:#ffffff !important; font-weight:600; }
   hr { border:none !important; border-top:1px solid #e8e8ed !important; margin:.5rem 0 !important; }
   [data-testid="stRadio"] label { font-size:.82rem !important; }
   h1, h2, h3, h4, h5, h6 { color: #0a2463 !important; }
@@ -76,10 +83,10 @@ _CONF_Z     = 2.3263
 
 # ── Commodity config ──────────────────────────────────────────────────────────
 COMM_COLORS = {
-    "KC":"#1a56db","CC":"#d97706","SB":"#059669",
-    "CT":"#7c3aed","RC":"#dc2626","LCC":"#0891b2",
-    "LSU":"#ea580c","GC":"#ca8a04","SI":"#64748b","HG":"#b45309",
-    "KRC":"#6d28d9","CLC":"#0f766e","SLS":"#a16207",
+    "KC":"#0a2463","CC":"#e8770a","SB":"#1f8a9c",
+    "CT":"#c94a4a","RC":"#7a4fb0","LCC":"#1f9d6f",
+    "LSU":"#c98a1f","GC":"#8a6d1f","SI":"#8a94a8","HG":"#b4541a",
+    "KRC":"#0a2463","CLC":"#e8770a","SLS":"#1f8a9c",
 }
 COMM_NAMES = {
     "KC":"KC : Arabica Coffee","CC":"CC : NYC Cocoa",
@@ -105,13 +112,15 @@ CENTS_QUOTED  = {"KC","SB","CT"}
 COMBINED_COMMS = {"KRC","CLC","SLS"}
 COMBINED_MAP   = {"KRC":("KC","RC"), "CLC":("CC","LCC"), "SLS":("SB","LSU")}
 
-C_LONG  = "#16a34a"
-C_SHORT = "#dc2626"
-C_NET   = "#1a56db"
-C_PRICE = "#f59e0b"
-C_OLD   = "#e67e22"
-C_NEW   = "#2980b9"
-GRAY    = "#6e6e73"
+NAVY    = "#0a2463"
+C_LONG  = "#1f9d6f"
+C_SHORT = "#c94a4a"
+C_NET   = NAVY
+C_PRICE = "#c98a1f"
+C_OLD   = "#e8770a"
+C_NEW   = NAVY
+GRAY    = "#5a6688"
+BAND_TEAL = "31,138,156"      # Cotton seasonality band hue
 
 CROP_START_MONTH = 9
 _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -126,14 +135,15 @@ _BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif",
-              color="#1a1a1a", size=11),
+              color="#1a1a2e", size=11),
+    legend=dict(bgcolor="rgba(0,0,0,0)"),
 )
 
 def _ax(x=False):
-    b = dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)", gridwidth=1,
+    b = dict(showgrid=True, gridcolor="rgba(10,36,99,0.08)", gridwidth=1,
              zeroline=True, zerolinecolor="rgba(0,0,0,0.12)", zerolinewidth=1,
              showline=True, linecolor="rgba(0,0,0,0.08)", linewidth=1,
-             tickfont=dict(size=10, color="#666"))
+             tickfont=dict(size=10, color="#4a5578"))
     if x:
         b.update(showgrid=False, tickangle=-35, nticks=20, hoverformat="%d %b %Y")
     return b
@@ -361,8 +371,8 @@ def kpi_row(items: list, color: str):
     r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
     html = "<div style='display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px'>"
     for lbl, val, sub in items:
-        sc = ("#16a34a" if sub and sub.startswith("▲") else
-              "#dc2626" if sub and sub.startswith("▼") else "#888")
+        sc = ("#1f9d6f" if sub and sub.startswith("▲") else
+              "#c94a4a" if sub and sub.startswith("▼") else "#888")
         sh = (f"<span style='font-size:.63rem;color:{sc};margin-left:4px'>{sub}</span>"
               if sub else "")
         html += (
@@ -526,7 +536,7 @@ def timeseries(d, series, title, ylabel, height=360, price=True):
         _add_price(fig, d, secondary_y=True)
     fig.update_layout(
         **_BASE, height=height,
-        title=dict(text=title, font=dict(size=12, color="#333"), x=0),
+        title=dict(text=title, font=dict(size=12, color="#0a2463"), x=0),
         margin=dict(l=52, r=55, t=42, b=72),
         legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center",
                     font_size=10, bgcolor="rgba(0,0,0,0)"),
@@ -551,7 +561,7 @@ def bars_weekly(d, col, title, n=13):
     fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
     fig.update_layout(
         **_BASE, height=290,
-        title=dict(text=title, font=dict(size=11, color="#444"), x=0),
+        title=dict(text=title, font=dict(size=11, color="#0a2463"), x=0),
         margin=dict(l=50, r=12, t=36, b=68),
         xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
         yaxis=dict(**_ax(), title_text="k lots", title_font_size=10),
@@ -560,10 +570,10 @@ def bars_weekly(d, col, title, n=13):
     return fig
 
 def bars_combined(d, lc, sc, nc, title, color, n=13, price=True):
-    DARK_GREEN  = "#1a6b1a"
-    LIGHT_GREEN = "#7dce7d"
-    DARK_RED    = "#8b0000"
-    LIGHT_RED   = "#f4a0a0"
+    DARK_GREEN  = "#1f9d6f"
+    LIGHT_GREEN = "#8fd4b9"
+    DARK_RED    = "#c94a4a"
+    LIGHT_RED   = "#e8a5a5"
 
     tail  = d.tail(n + 1)
     dates = tail["Date"].iloc[1:]
@@ -602,7 +612,7 @@ def bars_combined(d, lc, sc, nc, title, color, n=13, price=True):
 
     fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
     fig.update_layout(**_BASE, height=340, barmode="relative",
-        title=dict(text=title, font=dict(size=11, color="#444"), x=0),
+        title=dict(text=title, font=dict(size=11, color="#0a2463"), x=0),
         margin=dict(l=50, r=55, t=36, b=72),
         legend=dict(orientation="h", y=-0.26, x=0.5, xanchor="center", font_size=10),
         xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
@@ -629,12 +639,36 @@ def histogram_dist(d, col, color, title):
                   annotation_font_color=C_SHORT)
     fig.update_layout(
         **_BASE, height=260,
-        title=dict(text=f"Weekly Δ dist — {title}", font=dict(size=11, color="#444"), x=0),
+        title=dict(text=f"Weekly Δ dist — {title}", font=dict(size=11, color="#0a2463"), x=0),
         margin=dict(l=40, r=12, t=36, b=36),
         xaxis=dict(**_ax(x=True), title_text="k lots"),
         yaxis=dict(**_ax()), showlegend=False,
     )
     return fig
+
+def _seas_bands(fig, pivot, hist_cols, cur, ylab_hover="%{y:.1f}"):
+    """Cotton-style seasonality: min-max / 10-90th / 25-75th teal bands, dotted
+    average, last year red, current year navy."""
+    hist = pivot[hist_cols] if hist_cols else pivot.iloc[:, :0]
+    if hist.shape[1] >= 2:
+        band = pd.DataFrame({
+            "lo": hist.min(axis=1), "p10": hist.quantile(0.10, axis=1), "p25": hist.quantile(0.25, axis=1),
+            "avg": hist.mean(axis=1), "p75": hist.quantile(0.75, axis=1),
+            "p90": hist.quantile(0.90, axis=1), "hi": hist.max(axis=1)}).dropna(how="all")
+        for lo_c, hi_c, a, nm in [("lo", "hi", 0.08, "Min–Max"), ("p10", "p90", 0.16, "10th–90th pct"), ("p25", "p75", 0.28, "25th–75th pct")]:
+            fig.add_trace(go.Scatter(x=band.index, y=band[hi_c], line=dict(width=0), showlegend=False, hoverinfo="skip"))
+            fig.add_trace(go.Scatter(x=band.index, y=band[lo_c], fill="tonexty", fillcolor=f"rgba({BAND_TEAL},{a})",
+                                     line=dict(width=0), name=nm, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=band.index, y=band["avg"], mode="lines", name="Average",
+                                 line=dict(color="#4a5578", width=1.5, dash="dot"),
+                                 hovertemplate="Wk %{x}  Avg: " + ylab_hover + "<extra></extra>"))
+    prev = sorted(hist_cols)[-1] if hist_cols else None
+    for yr, clr, w in [(prev, C_SHORT, 2), (cur, NAVY, 3)]:
+        if yr is not None and yr in pivot.columns:
+            sr = pivot[yr].dropna()
+            fig.add_trace(go.Scatter(x=sr.index, y=sr.values, mode="lines", name=str(yr),
+                                     line=dict(color=clr, width=w),
+                                     hovertemplate="Wk %{x}  " + str(yr) + ": " + ylab_hover + "<extra></extra>"))
 
 def seasonal(d, col, color, title):
     if d.empty or col not in d.columns:
@@ -647,53 +681,15 @@ def seasonal(d, col, color, title):
     pivot = s.pivot_table(index="Week", columns="Year", values="v", aggfunc="mean")
     pivot = pivot[pivot.index <= 52]
     cur_year  = int(s["Year"].max())
-    hist      = pivot[[c for c in pivot.columns if int(c) < cur_year]]
-    if hist.empty or hist.shape[1] == 0:
-        # Only current-year data — just show current year line, no band
-        fig = go.Figure()
-        if cur_year in pivot.columns:
-            cy_raw = s[s["Year"] == cur_year].dropna(subset=["v"]).sort_values("Week")
-            fig.add_trace(go.Scatter(x=cy_raw["Week"], y=cy_raw["v"], mode="lines+markers",
-                name=str(cur_year), line=dict(color=color, width=2.5),
-                marker=dict(size=4.5, color=color),
-                customdata=cy_raw["Date"].dt.strftime("%d %b %Y"),
-                hovertemplate="%{customdata}:  %{y:.1f}k<extra></extra>"))
-        fig.update_layout(**_BASE, height=340,
-            title=dict(text=f"Seasonality — {title}  ·  k lots  (current year only)",
-                       font=dict(size=11,color="#999"), x=0),
-            margin=dict(l=50,r=20,t=42,b=60),
-            xaxis=dict(**_ax(), title_text="Week"),
-            yaxis=dict(**_ax(), title_text="k lots", title_font_size=10))
-        return fig
-    p25, p75, med = hist.quantile(0.25,axis=1), hist.quantile(0.75,axis=1), hist.median(axis=1)
-    r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
-
+    hist_cols = [c for c in pivot.columns if int(c) < cur_year]
     fig = go.Figure()
-    for yr in hist.columns:
-        fig.add_trace(go.Scatter(x=pivot.index, y=hist[yr], mode="lines",
-            line=dict(color="rgba(160,160,160,0.14)", width=1),
-            showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(
-        x=list(p75.index)+list(p75.index[::-1]),
-        y=list(p75.values)+list(p25.values[::-1]),
-        fill="toself", fillcolor=f"rgba({r},{g},{b},0.10)",
-        line=dict(width=0), name="25–75th pct", hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=med.index, y=med.values, mode="lines", name="Median",
-        line=dict(color=f"rgba({r},{g},{b},0.5)", width=1.6, dash="dash"),
-        hovertemplate="Wk %{x}  Median: %{y:.1f}k<extra></extra>"))
-    if cur_year in pivot.columns:
-        cy_raw = s[s["Year"] == cur_year].dropna(subset=["v"]).sort_values("Week")
-        fig.add_trace(go.Scatter(x=cy_raw["Week"], y=cy_raw["v"], mode="lines+markers",
-            name=str(cur_year), line=dict(color=color, width=2.5),
-            marker=dict(size=4.5, color=color),
-            customdata=cy_raw["Date"].dt.strftime("%d %b %Y"),
-            hovertemplate="%{customdata}:  %{y:.1f}k<extra></extra>"))
+    _seas_bands(fig, pivot, hist_cols, cur_year)
 
     MTICKS = {1:"Jan",5:"Feb",9:"Mar",14:"Apr",18:"May",23:"Jun",
               27:"Jul",32:"Aug",36:"Sep",40:"Oct",45:"Nov",49:"Dec"}
     fig.update_layout(
         **_BASE, height=340,
-        title=dict(text=f"Seasonality — {title}  ·  k lots", font=dict(size=12,color="#333"), x=0),
+        title=dict(text=f"Seasonality — {title}  ·  k lots", font=dict(size=12,color="#0a2463"), x=0),
         margin=dict(l=50,r=20,t=42,b=60),
         legend=dict(orientation="h",y=-0.18,x=0.5,xanchor="center",font_size=10),
         xaxis=dict(**_ax(), tickmode="array",
@@ -733,7 +729,7 @@ def scatter_2d(d, x_col, y_col, color, title, xlabel, ylabel):
     fig.update_layout(
         **_BASE, height=340,
         title=dict(text=f"{title}   <span style='font-size:10px;color:#888'>R²={r2:.2f}</span>",
-                   font=dict(size=12,color="#333"), x=0),
+                   font=dict(size=12,color="#0a2463"), x=0),
         margin=dict(l=52,r=20,t=48,b=48),
         xaxis=dict(**_ax(x=True), title_text=xlabel),
         yaxis=dict(**_ax(), title_text=ylabel),
@@ -781,7 +777,7 @@ def scatter_3d(x, y, z, dates, color, title, xlabel, ylabel, zlabel, height=540)
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family="-apple-system,BlinkMacSystemFont,sans-serif", color="#2d2d2d", size=11),
         title=dict(text=f"{title}<br><span style='font-size:10px;color:#888'>{corr_str}</span>",
-                   font=dict(size=12, color="#444"), x=0),
+                   font=dict(size=12, color="#0a2463"), x=0),
         height=height, margin=dict(l=0, r=0, t=70, b=20),
         scene=dict(
             aspectmode="cube",
@@ -851,7 +847,7 @@ def render_spec(d, report, color):
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Net: %{{y:.1f}}{suffix}<extra></extra>")})
     if spc and spc in d.columns:
         traces.append({"trace": go.Scatter(x=d["Date"], y=_get_y(d, spc, unit), name="Spread",
-            line=dict(color="#94a3b8", width=1.4, dash="dot"),
+            line=dict(color="#8a94a8", width=1.4, dash="dot"),
             visible="legendonly",
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Spread: %{{y:.1f}}{suffix}<extra></extra>")})
     _chart(timeseries(d, traces, f"{cat}  ·  {ylabel}", ylabel, price=show_px), width='stretch')
@@ -875,7 +871,7 @@ def render_spec(d, report, color):
         if spc and spc in d.columns:
             pct_traces.append({"trace": go.Scatter(
                 x=d["Date"], y=(d[spc] / oi * 100).round(2), name="Spread %",
-                line=dict(color="#94a3b8", width=1.4, dash="dot"),
+                line=dict(color="#8a94a8", width=1.4, dash="dot"),
                 visible="legendonly",
                 hovertemplate="<b>%{x|%d %b %Y}</b><br>Spread: %{y:.1f}%<extra></extra>")})
         if pct_traces:
@@ -959,17 +955,17 @@ def render_commercial(d, report, color):
 # ══════════════════════════════════════════════════════════════════════════════
 SPREAD_COLS = {
     "Managed Money": ("MM Spread",    C_NET),
-    "Swap Dealers":  ("Swap Spread",  "#7c3aed"),
-    "Other Rept":    ("Other Spread", "#d97706"),
+    "Swap Dealers":  ("Swap Spread",  "#7a4fb0"),
+    "Other Rept":    ("Other Spread", "#e8770a"),
 }
 
 # OC/NC — same categories with a short key for column naming
 _OCNC_CATS = {
     "Managed Money": ("MM Spread",    C_NET,    "MM"),
-    "Swap Dealers":  ("Swap Spread",  "#7c3aed","Swap"),
-    "Other Rept":    ("Other Spread", "#d97706","OR"),
+    "Swap Dealers":  ("Swap Spread",  "#7a4fb0","Swap"),
+    "Other Rept":    ("Other Spread", "#e8770a","OR"),
 }
-_OCNC_C_CROSS = "#8b5cf6"   # cross-crop colour
+_OCNC_C_CROSS = "#7a4fb0"   # cross-crop colour
 
 
 def _build_ocnc_df(df_all_crops):
@@ -1224,8 +1220,8 @@ def render_spreading(d, color, df_all_crops=None, commodity=""):
                 return _seas_chart(_wsp, metric, title, accent, ylabel="k lots", by_week=False, sm=sm)
             _CAT_ORD = [
                 ("Managed Money", "MM",   C_NET),
-                ("Other Rept",    "OR",   "#d97706"),
-                ("Swap Dealers",  "Swap", "#7c3aed"),
+                ("Other Rept",    "OR",   "#e8770a"),
+                ("Swap Dealers",  "Swap", "#7a4fb0"),
             ]
             for _clbl, _sh, _cc in _CAT_ORD:
                 if f"{_sh}_Old" not in _wsp.columns: continue
@@ -1362,26 +1358,8 @@ def _seas_chart(wide, metric, title, accent, ylabel="k lots", by_week=True, sm=C
     else:
         cur = _current_crop_year_label(sm)
         hist_cols = [c for c in pivot.columns if c != cur]
-    hist = pivot[hist_cols] if hist_cols else pivot
-    if hist.empty or hist.shape[1] == 0:
-        p25 = p75 = med = pd.Series(dtype=float)
-    else:
-        p25, p75, med = hist.quantile(0.25, axis=1), hist.quantile(0.75, axis=1), hist.median(axis=1)
-    r, g, b = int(accent[1:3], 16), int(accent[3:5], 16), int(accent[5:7], 16)
     fig = go.Figure()
-    for yr in hist_cols:
-        fig.add_trace(go.Scatter(x=pivot.index, y=hist[yr], mode="lines",
-            line=dict(color="rgba(150,150,150,0.18)", width=1), showlegend=False, hoverinfo="skip"))
-    xs = list(p75.index) + list(p75.index[::-1])
-    fig.add_trace(go.Scatter(x=xs, y=list(p75.values)+list(p25.values[::-1]),
-        fill="toself", fillcolor=f"rgba({r},{g},{b},0.10)",
-        line=dict(width=0), name="25–75th pct", hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=med.index, y=med.values, mode="lines", name="Median",
-        line=dict(color=f"rgba({r},{g},{b},0.55)", width=1.6, dash="dash")))
-    if cur in pivot.columns:
-        cy = pivot[cur].dropna()
-        fig.add_trace(go.Scatter(x=cy.index, y=cy.values, mode="lines+markers",
-            name=str(cur), line=dict(color=accent, width=2.6), marker=dict(size=5, color=accent)))
+    _seas_bands(fig, pivot, hist_cols, cur)
     fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.12)")
     if by_week:
         xticks = dict(tickvals=list(MONTH_TICKS.keys()), ticktext=list(MONTH_TICKS.values()))
@@ -1389,7 +1367,7 @@ def _seas_chart(wide, metric, title, accent, ylabel="k lots", by_week=True, sm=C
         xticks = dict(tickvals=list(CROP_WEEK_TICKS.keys()),
                       ticktext=[_MONTHS[(sm - 1 + i) % 12] for i in range(12)])
     fig.update_layout(**_BASE, height=340,
-        title=dict(text=title, font=dict(size=12, color="#444"), x=0),
+        title=dict(text=title, font=dict(size=12, color="#0a2463"), x=0),
         margin=dict(l=50, r=20, t=40, b=60),
         legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center", font_size=10, bgcolor="rgba(0,0,0,0)"),
         xaxis=dict(**_ax(x=True), title_text="", **xticks),
@@ -1416,32 +1394,24 @@ def _seas_chart_overlay(wide, metric_old, metric_new, title, ylabel, sm=CROP_STA
     fig = go.Figure()
 
     for pv, clr_hist, clr_cur, clr_band, label in [
-        (pv_old, "rgba(230,126,34,0.15)", C_OLD, "rgba(230,126,34,0.12)", "Old Crop"),
-        (pv_new, "rgba(41,128,185,0.15)",  C_NEW, "rgba(41,128,185,0.12)",  "New Crop"),
+        (pv_old, "", C_OLD, "232,119,10", "Old Crop"),
+        (pv_new, "", C_NEW, "10,36,99", "New Crop"),
     ]:
         if pv is None:
             continue
         hist_cols = [c2 for c2 in pv.columns if c2 != cur]
         hist = pv[hist_cols] if hist_cols else pv
 
-        # faint historical lines
-        for yr in hist_cols:
-            fig.add_trace(go.Scatter(
-                x=pv.index, y=hist[yr], mode="lines",
-                line=dict(color=clr_hist, width=1),
-                showlegend=False, hoverinfo="skip"
-            ))
 
-        # IQR band
+        # 10-90th and 25-75th bands (Cotton style), tinted per crop
         if len(hist_cols) >= 4:
-            p25 = hist.quantile(0.25, axis=1)
-            p75 = hist.quantile(0.75, axis=1)
-            xs  = list(p75.index) + list(p75.index[::-1])
-            fig.add_trace(go.Scatter(
-                x=xs, y=list(p75.values) + list(p25.values[::-1]),
-                fill="toself", fillcolor=clr_band,
-                line=dict(width=0), name=f"{label} 25-75%", hoverinfo="skip"
-            ))
+            for lo_q, hi_q, al, nm in [(0.10, 0.90, 0.12, "10-90%"), (0.25, 0.75, 0.24, "25-75%")]:
+                plo, phi = hist.quantile(lo_q, axis=1), hist.quantile(hi_q, axis=1)
+                fig.add_trace(go.Scatter(x=phi.index, y=phi.values, line=dict(width=0),
+                                         showlegend=False, hoverinfo="skip"))
+                fig.add_trace(go.Scatter(x=plo.index, y=plo.values, fill="tonexty",
+                                         fillcolor=f"rgba({clr_band},{al})", line=dict(width=0),
+                                         name=f"{label} {nm}", hoverinfo="skip"))
 
         # current crop year — bold
         if cur in pv.columns:
@@ -1461,7 +1431,7 @@ def _seas_chart_overlay(wide, metric_old, metric_new, title, ylabel, sm=CROP_STA
     )
     fig.update_layout(
         **_BASE, height=360,
-        title=dict(text=title, font=dict(size=12, color="#444"), x=0),
+        title=dict(text=title, font=dict(size=12, color="#0a2463"), x=0),
         margin=dict(l=50, r=20, t=40, b=70),
         legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center",
                     font_size=10, bgcolor="rgba(0,0,0,0)"),
@@ -1635,7 +1605,7 @@ def render_old_new(d_crops, color, commodity=""):
                    hovertemplate="<b>%{x|%d %b %y}</b><br>New OI: %{y:.1f}k<extra></extra>"),
         ])
         fig_oi.update_layout(**_BASE, barmode="stack", height=300,
-            title=dict(text="Open Interest — Old vs New Crop  ·  k lots",font=dict(size=12,color="#444"),x=0),
+            title=dict(text="Open Interest — Old vs New Crop  ·  k lots",font=dict(size=12,color="#0a2463"),x=0),
             margin=dict(l=50,r=12,t=38,b=68), bargap=0.18,
             legend=dict(orientation="h",y=-0.24,x=0.5,xanchor="center",font_size=10),
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -1655,7 +1625,7 @@ def render_old_new(d_crops, color, commodity=""):
                             hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>{lbl}: %{{y:.1f}}k<extra></extra>"))
                 fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.15)")
                 fig.update_layout(**_BASE, height=340,
-                    title=dict(text=f"{title}  ·  k lots",font=dict(size=12,color="#444"),x=0),
+                    title=dict(text=f"{title}  ·  k lots",font=dict(size=12,color="#0a2463"),x=0),
                     margin=dict(l=50,r=20,t=40,b=70),
                     legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -1678,7 +1648,7 @@ def render_old_new(d_crops, color, commodity=""):
                             line=dict(color=clr,width=2.2,shape="spline",smoothing=0.6),
                             hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>{lbl}: %{{y:.1f}}k<extra></extra>"))
                 fig.update_layout(**_BASE, height=300,
-                    title=dict(text=f"{title}  ·  k lots",font=dict(size=12,color="#444"),x=0),
+                    title=dict(text=f"{title}  ·  k lots",font=dict(size=12,color="#0a2463"),x=0),
                     margin=dict(l=50,r=20,t=40,b=70),
                     legend=dict(orientation="h",y=-0.24,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -1695,7 +1665,7 @@ def render_old_new(d_crops, color, commodity=""):
                            hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>New: %{{y:.1f}}k<extra></extra>"),
                 ])
                 fig2.update_layout(**_BASE, barmode="stack", height=280,
-                    title=dict(text=f"{title} — Stacked  ·  k lots",font=dict(size=12,color="#444"),x=0),
+                    title=dict(text=f"{title} — Stacked  ·  k lots",font=dict(size=12,color="#0a2463"),x=0),
                     margin=dict(l=50,r=20,t=40,b=70), bargap=0.12,
                     legend=dict(orientation="h",y=-0.26,x=0.5,xanchor="center",font_size=10,bgcolor="rgba(0,0,0,0)"),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -1721,7 +1691,7 @@ DISAGG_TRADER_GROUPS = {
     "Producer":      ["Traders Producer Long","Traders Producer Short"],
     "All Reportable":["Traders Tot Rept Long","Traders Tot Rept Short","Traders Total"],
 }
-TRADER_COLORS = [C_LONG, C_SHORT, "#94a3b8", C_NET, C_PRICE]
+TRADER_COLORS = [C_LONG, C_SHORT, "#8a94a8", C_NET, C_PRICE]
 
 def render_traders(d, report, color):
     grp_map = CIT_TRADER_GROUPS if report=="CIT" else DISAGG_TRADER_GROUPS
@@ -1743,7 +1713,7 @@ def render_traders(d, report, color):
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
     fig.update_layout(
         **_BASE, height=360,
-        title=dict(text=f"Traders in Each Category — {group}",font=dict(size=12,color="#333"),x=0),
+        title=dict(text=f"Traders in Each Category — {group}",font=dict(size=12,color="#0a2463"),x=0),
         margin=dict(l=50,r=20,t=42,b=70),
         legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10),
         xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -1762,7 +1732,7 @@ def render_traders(d, report, color):
                     hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>Δ: %{{y:+.0f}}<extra></extra>"))
                 fb.add_hline(y=0,line_width=1,line_color="rgba(0,0,0,0.14)")
                 fb.update_layout(**_BASE,height=240,
-                    title=dict(text=f"{name} — Δ",font=dict(size=10,color="#444"),x=0),
+                    title=dict(text=f"{name} — Δ",font=dict(size=10,color="#0a2463"),x=0),
                     margin=dict(l=40,r=8,t=32,b=60),showlegend=False,
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                     yaxis=dict(**_ax()))
@@ -1790,7 +1760,7 @@ _RECAP_GROUP_BG = {
     "OI":              "#e5e7eb",
     "OI · k lots":     "#e5e7eb",
     "Δ 1w":            "#f9a8d4",
-    "OI %":            "#1e3a8a",
+    "OI %":            "#0a2463",
     "Nominal (M USD)": "#d1fae5",
     "Nominal (M GBP)": "#fef9c3",
     "# Traders":       "#ede9fe",
@@ -1822,7 +1792,7 @@ _RECAP_CSS = """
 .rtbl .idx{text-align:left;font-weight:600;color:#374151;background:#f9fafb;min-width:52px;white-space:nowrap}
 .rtbl .sub{background:#f9fafb;font-size:.60rem;color:#555;font-weight:600;text-align:center;white-space:normal;max-width:48px;line-height:1.25}
 .rtbl tbody tr:hover td{background:#f0f9ff!important}
-.rpos{color:#16a34a}.rneg{color:#dc2626}
+.rpos{color:#1f9d6f}.rneg{color:#c94a4a}
 .rtbl .gsep{box-shadow:inset 3px 0 0 #6b7280}
 .rtbl .gsub{box-shadow:inset 1.5px 0 0 #b8c0cc}
 .rtbl th.sub[data-tt]{position:relative;cursor:help}
@@ -2392,7 +2362,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
                 columns=chg_full.columns,
             )
             st.markdown(
-                "<p style='font-size:.72rem;color:#6e6e73;margin:10px 0 2px'>"
+                "<p style='font-size:.72rem;color:#5a6688;margin:10px 0 2px'>"
                 "Weekly Δ stats  ·  selected period</p>",
                 unsafe_allow_html=True,
             )
@@ -2405,7 +2375,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
     gross_tbl = _build_gross_legs_df(d, report)
     with _exp("Gross legs by category  ·  k lots  &  % OI", expanded=False):
         st.markdown(
-            "<p style='font-size:.72rem;color:#6e6e73;margin:0 0 6px'>"
+            "<p style='font-size:.72rem;color:#5a6688;margin:0 0 6px'>"
             "Long/Short include spreading positions. % columns are each leg divided by Total OI.</p>",
             unsafe_allow_html=True,
         )
@@ -2418,7 +2388,7 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
     if _sp_cols and "Total OI" in d.columns:
         with _exp("Spreading as % of total OI", expanded=False):
             _oi = d["Total OI"].astype(float).replace(0, np.nan)
-            _clr = [C_NET, "#7c3aed", "#d97706"]
+            _clr = [C_NET, "#7a4fb0", "#e8770a"]
             _tr = [{"trace": go.Scatter(
                         x=d["Date"], y=(d[c].astype(float) / _oi * 100), name=n,
                         line=dict(color=_clr[i % 3], width=2.0),
@@ -2542,8 +2512,8 @@ def render_concentration(d, color):
                          default=["Conc Gross 4 Long","Conc Gross 4 Short",
                                   "Conc Gross 8 Long","Conc Gross 8 Short"],
                          key="conc_sel")
-    CONC_PALETTE = ["#1a56db","#dc2626","#1a56db","#dc2626",
-                    "#7c3aed","#059669","#7c3aed","#059669"]
+    CONC_PALETTE = ["#0a2463","#c94a4a","#0a2463","#c94a4a",
+                    "#7a4fb0","#1f8a9c","#7a4fb0","#1f8a9c"]
     CONC_DASH    = ["solid","solid","dash","dash","solid","solid","dash","dash"]
 
     if sel:
@@ -2556,7 +2526,7 @@ def render_concentration(d, color):
         fig.update_layout(
             **_BASE, height=360,
             title=dict(text="Concentration — % of OI held by largest traders",
-                       font=dict(size=12,color="#333"),x=0),
+                       font=dict(size=12,color="#0a2463"),x=0),
             margin=dict(l=50,r=20,t=42,b=70),
             legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10),
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -2615,7 +2585,7 @@ def render_exposure(d, commodity, color):
             hovertemplate="<b>%{x|%d %b %Y}</b><br>Nominal: $%{y:.0f}M<extra></extra>"))
         fig.update_layout(
             **_BASE, height=320,
-            title=dict(text=f"{nc} — Nominal Exposure  ·  $M",font=dict(size=12,color="#333"),x=0),
+            title=dict(text=f"{nc} — Nominal Exposure  ·  $M",font=dict(size=12,color="#0a2463"),x=0),
             margin=dict(l=60,r=20,t=42,b=50), showlegend=False,
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="$M",title_font_size=10))
@@ -2751,14 +2721,14 @@ def render_analysis(d, report, color, commodity="KC"):
         arrow_px    = "▲" if px_move_abs >= 0 else "▼"
         arrow_sp    = "▲" if implied_chg >= 0 else "▼"
         clr_px      = C_LONG if px_move_abs >= 0 else C_SHORT
-        _bg_chg     = "#16a34a" if implied_chg >= 0 else "#dc2626"
+        _bg_chg     = "#1f9d6f" if implied_chg >= 0 else "#c94a4a"
 
-        _th = ("padding:5px 12px;font-size:.60rem;font-weight:700;color:#94a3b8;"
+        _th = ("padding:5px 12px;font-size:.60rem;font-weight:700;color:#8a94a8;"
                "letter-spacing:.05em;border:1px solid #e5e7eb;background:#f9fafb;"
                "text-align:left;white-space:nowrap")
         _td = ("padding:6px 12px;font-size:.82rem;font-weight:700;color:#1e293b;"
                "border:1px solid #e5e7eb;white-space:nowrap;vertical-align:top")
-        _sm = "font-size:.68rem;font-weight:400;color:#94a3b8;margin-top:2px"
+        _sm = "font-size:.68rem;font-weight:400;color:#8a94a8;margin-top:2px"
         st.markdown(
             f"<table style='border-collapse:collapse;font-family:-apple-system,sans-serif;"
             f"margin:10px 0 18px;width:100%'>"
@@ -2796,16 +2766,16 @@ def render_analysis(d, report, color, commodity="KC"):
             line=dict(color=color, width=2, dash="dash"), showlegend=False))
         fig_reg.add_trace(go.Scatter(
             x=[x_hist[-1]], y=[y_hist[-1]], mode="markers", name="Latest",
-            marker=dict(symbol="star", size=14, color="#f59e0b",
+            marker=dict(symbol="star", size=14, color="#c98a1f",
                         line=dict(width=1.2, color="white")),
             hovertemplate=f"<b>{latest_pt_lbl}</b><br>ΔPx%: {x_hist[-1]:.1f}%<br>Δ{sel}: {y_hist[-1]:+.1f}k<extra></extra>"))
         fig_reg.add_annotation(
             x=x_hist[-1], y=y_hist[-1],
             text=f"<b>{latest_pt_lbl}</b>",
-            showarrow=True, arrowhead=2, arrowwidth=1.2, arrowcolor="#f59e0b",
+            showarrow=True, arrowhead=2, arrowwidth=1.2, arrowcolor="#c98a1f",
             font=dict(size=9, color="#92400e"),
             bgcolor="rgba(255,237,213,0.92)", borderpad=4,
-            bordercolor="#f59e0b", borderwidth=1, ax=30, ay=-36)
+            bordercolor="#c98a1f", borderwidth=1, ax=30, ay=-36)
         fig_reg.add_annotation(x=0.02, y=0.98, xref="paper", yref="paper",
             text=f"R² = {r2:.3f}  |  n = {len(x_hist)} obs{win_label}",
             showarrow=False, font=dict(size=10.5, color="#374151"),
@@ -2814,7 +2784,7 @@ def render_analysis(d, report, color, commodity="KC"):
             bordercolor="#e2e8f0", borderwidth=1)
         fig_reg.add_annotation(x=0.98, y=0.98, xref="paper", yref="paper",
             text=f"<i>Δ{sel} = {beta:+.2f} × ΔPx% + {alpha:+.2f}</i>",
-            showarrow=False, font=dict(size=10, color="#94a3b8"),
+            showarrow=False, font=dict(size=10, color="#8a94a8"),
             bgcolor="rgba(255,255,255,0)", xanchor="right", yanchor="top")
         fig_reg.update_layout(**_BASE, height=420,
             title=dict(text=f"Δ{sel}  vs  ΔPx% 1w  ·  weekly changes",
@@ -2862,7 +2832,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 "Error: %{customdata[1]:+.2f}k<extra></extra>")))
         fig_avp.add_trace(go.Bar(
             x=bar_labels, y=bar_pred,
-            customdata=cd, name="Predicted", marker_color="#94a3b8", opacity=0.65,
+            customdata=cd, name="Predicted", marker_color="#8a94a8", opacity=0.65,
             hovertemplate=(
                 "<b>%{x}</b><br>"
                 "Actual: %{customdata[0]:+.2f}k<br>"
@@ -2938,7 +2908,7 @@ def render_analysis(d, report, color, commodity="KC"):
         cell_h = 34
         fig_pw = go.Figure(go.Heatmap(
             z=zv, x=labels, y=labels,
-            colorscale=[[0,"#dc2626"],[0.45,"#fef2f2"],[0.5,"#f9fafb"],[0.55,"#f0fdf4"],[1,"#16a34a"]],
+            colorscale=[[0,"#c94a4a"],[0.45,"#fef2f2"],[0.5,"#f9fafb"],[0.55,"#f0fdf4"],[1,"#1f9d6f"]],
             zmid=0, zmin=-1, zmax=1,
             text=tv, texttemplate="%{text}", textfont=dict(size=9.5, color="#111"),
             hovertemplate="<b>%{y}</b> vs <b>%{x}</b>: r=%{z:.1f}<extra></extra>",
@@ -3015,7 +2985,7 @@ def render_analysis(d, report, color, commodity="KC"):
         def _bar_colors(vals, sigs, mode="signed"):
             if mode == "unsigned":
                 return ["#0e7490" if s else "#d1d5db" for s in sigs]
-            return [("#16a34a" if v > 0 else "#dc2626") if s else "#d1d5db"
+            return [("#1f9d6f" if v > 0 else "#c94a4a") if s else "#d1d5db"
                     for v, s in zip(vals, sigs)]
 
         def _bar_text(vals, fmt):
@@ -3159,8 +3129,8 @@ def render_analysis(d, report, color, commodity="KC"):
             group, dPx_g, dom_mag_g, dates_g = group[keep], dPx_v[keep], dom_mag[keep], dates_v[keep]
 
             _order  = ["Long-Led Rally", "Short-Cover Rally", "Short-Led Selloff", "Long-Liq Selloff"]
-            _gcolor = {"Long-Led Rally": "#16a34a", "Short-Cover Rally": "#86efac",
-                       "Short-Led Selloff": "#dc2626", "Long-Liq Selloff": "#fca5a5"}
+            _gcolor = {"Long-Led Rally": "#1f9d6f", "Short-Cover Rally": "#86efac",
+                       "Short-Led Selloff": "#c94a4a", "Long-Liq Selloff": "#fca5a5"}
 
             fig_box = go.Figure()
             for g in _order:
@@ -3185,7 +3155,7 @@ def render_analysis(d, report, color, commodity="KC"):
 
             stats_rows = {g: _grp_stats(g) for g in _order}
 
-            _th2 = ("padding:5px 10px;font-size:.60rem;font-weight:700;color:#94a3b8;"
+            _th2 = ("padding:5px 10px;font-size:.60rem;font-weight:700;color:#8a94a8;"
                     "letter-spacing:.05em;border:1px solid #e5e7eb;background:#f9fafb;text-align:left")
             _td2 = "padding:6px 10px;font-size:.78rem;font-weight:600;color:#1e293b;border:1px solid #e5e7eb"
             rows_html = ""
@@ -3297,7 +3267,7 @@ def render_analysis(d, report, color, commodity="KC"):
             fig_map = go.Figure(go.Scatter(
                 x=dL_v, y=dS_v, mode="markers",
                 marker=dict(
-                    color=dPx_v, colorscale=[[0, "#dc2626"], [0.5, "#f4f4f5"], [1, "#16a34a"]],
+                    color=dPx_v, colorscale=[[0, "#c94a4a"], [0.5, "#f4f4f5"], [1, "#1f9d6f"]],
                     cmin=-_clim, cmax=_clim, size=7, opacity=0.75,
                     line=dict(width=0.4, color="white"),
                     colorbar=dict(title=dict(text="Px Δ%", side="right"), thickness=12, len=0.75,
@@ -3383,7 +3353,7 @@ def render_analysis(d, report, color, commodity="KC"):
 
             def _impact_card(col, label, beta, se, p, positive_is_bullish):
                 sig = pd.notna(p) and p < 0.05
-                _clr = ("#16a34a" if positive_is_bullish else "#dc2626") if sig else "#94a3b8"
+                _clr = ("#1f9d6f" if positive_is_bullish else "#c94a4a") if sig else "#8a94a8"
                 with col:
                     st.markdown(
                         (f"<div style='font-size:.75rem;color:#374151'><b>{label}</b><br>"
@@ -3406,7 +3376,7 @@ def render_analysis(d, report, color, commodity="KC"):
                     st.markdown(
                         f"<div style='font-size:.75rem;color:#374151'><b>Bullish: Buying vs Covering</b><br>"
                         f"t = {t_bull:+.2f}, p = {p_bull:.3f}<br>"
-                        f"<span style='color:{'#16a34a' if p_bull < 0.05 else '#94a3b8'}'>"
+                        f"<span style='color:{'#1f9d6f' if p_bull < 0.05 else '#8a94a8'}'>"
                         f"{_v_bull}{' (significant)' if p_bull < 0.05 else ' (not significant)'}</span></div>",
                         unsafe_allow_html=True)
                 else:
@@ -3418,7 +3388,7 @@ def render_analysis(d, report, color, commodity="KC"):
                     st.markdown(
                         f"<div style='font-size:.75rem;color:#374151'><b>Bearish: Selling vs Liquidation</b><br>"
                         f"t = {t_bear:+.2f}, p = {p_bear:.3f}<br>"
-                        f"<span style='color:{'#dc2626' if p_bear < 0.05 else '#94a3b8'}'>"
+                        f"<span style='color:{'#c94a4a' if p_bear < 0.05 else '#8a94a8'}'>"
                         f"{_v_bear}{' (significant)' if p_bear < 0.05 else ' (not significant)'}</span></div>",
                         unsafe_allow_html=True)
                 else:
@@ -3471,7 +3441,7 @@ def render_analysis(d, report, color, commodity="KC"):
                                      f"<i>Not enough data</i></div>", unsafe_allow_html=True)
                         return
                     sig = pd.notna(res["p"]) and res["p"] < 0.05
-                    clr = "#1a56db" if sig else "#94a3b8"
+                    clr = "#0a2463" if sig else "#8a94a8"
                     st.markdown(
                         f"<div style='font-size:.75rem;color:#374151'><b>{label}</b><br>"
                         f"{res['beta']:+.2f}k lots per 1% ΔPx<br>"
@@ -3517,7 +3487,7 @@ def render_analysis(d, report, color, commodity="KC"):
                                                  "Proj. Net (k lots)": f"{net_last + impact:+.1f}k"}))
                     sim_df = pd.DataFrame(sim_rows)
 
-                    _live_clr = "#16a34a" if live_chg >= 0 else "#dc2626"
+                    _live_clr = "#1f9d6f" if live_chg >= 0 else "#c94a4a"
                     st.markdown(
                         f"<p style='font-size:.75rem;color:#374151'>Last published: <b>{last_cot_date.date()}</b> "
                         f"net {flow_pick} <b>{net_last:+.1f}k lots</b> @ cutoff price <b>{cutoff_price:.2f}</b>. "
@@ -3530,8 +3500,8 @@ def render_analysis(d, report, color, commodity="KC"):
                     fig_now = go.Figure(go.Candlestick(
                         x=_cndl["Date"], open=_cndl["rollex_open"], high=_cndl["rollex_high"],
                         low=_cndl["rollex_low"], close=_cndl["rollex_px"],
-                        increasing_line_color="#16a34a", decreasing_line_color="#dc2626", name="Price"))
-                    fig_now.add_hline(y=cutoff_price, line=dict(color="#1a56db", width=1, dash="dash"),
+                        increasing_line_color="#1f9d6f", decreasing_line_color="#c94a4a", name="Price"))
+                    fig_now.add_hline(y=cutoff_price, line=dict(color="#0a2463", width=1, dash="dash"),
                                        annotation_text="Last COT cutoff", annotation_font_size=9)
                     fig_now.update_layout(**_BASE, height=300, showlegend=False,
                         title=dict(text=f"{commodity}: price since last COT cutoff",
@@ -3555,11 +3525,11 @@ def render_analysis(d, report, color, commodity="KC"):
                         secondary_y=False)
                     fig_ov.add_trace(go.Scatter(
                         x=net_hist["Date"], y=net_hist["Net"], mode="lines",
-                        line=dict(color="#1a56db", width=1.4, shape="hv"), name="Published Net"),
+                        line=dict(color="#0a2463", width=1.4, shape="hv"), name="Published Net"),
                         secondary_y=True)
                     fig_ov.add_trace(go.Scatter(
                         x=[last_cot_date, live_date], y=[net_last, net_last + beta * live_chg],
-                        mode="lines+markers", line=dict(color="#7c3aed", width=2, dash="dot"),
+                        mode="lines+markers", line=dict(color="#7a4fb0", width=2, dash="dot"),
                         marker=dict(size=6), name="Projected"), secondary_y=True)
                     fig_ov.update_layout(**_BASE, height=380,
                         title=dict(text=f"{commodity}: 250-day price & {flow_pick} net  (published & projected)",
@@ -3628,7 +3598,7 @@ def render_correlation(d, report, color):
                         marker=dict(symbol="star",size=14,color=C_SHORT,line=dict(width=1.2,color="white")),
                         showlegend=False))
                     fig2.update_layout(**_BASE, height=340,
-                        title=dict(text=f"Price Level vs {sel2}  R²={r2v:.2f}",font=dict(size=12,color="#333"),x=0),
+                        title=dict(text=f"Price Level vs {sel2}  R²={r2v:.2f}",font=dict(size=12,color="#0a2463"),x=0),
                         margin=dict(l=52,r=20,t=48,b=48),
                         xaxis=dict(**_ax(x=True),title_text="Rollex Px"),
                         yaxis=dict(**_ax(),title_text=f"{sel2} (k lots)"))
@@ -3794,7 +3764,7 @@ def render_comparison(commodity, start_date, end_date, color):
     fig_ts.update_layout(
         **_BASE, height=380,
         title=dict(text=f"{cfg['cit_label']}  vs  {cfg['dag_label']}  ·  Net  ·  {ylabel}",
-                   font=dict(size=12,color="#333"), x=0),
+                   font=dict(size=12,color="#0a2463"), x=0),
         margin=dict(l=52,r=20,t=42,b=72),
         legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10),
         xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -3815,7 +3785,7 @@ def render_comparison(commodity, start_date, end_date, color):
         fig_gap.update_layout(
             **_BASE, height=260,
             title=dict(text=f"Gap: {cfg['cit_label']} minus {cfg['dag_label']}  ·  k lots",
-                       font=dict(size=11,color="#444"), x=0),
+                       font=dict(size=11,color="#0a2463"), x=0),
             margin=dict(l=50,r=12,t=36,b=68), showlegend=False,
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="k lots",title_font_size=10),
@@ -3845,7 +3815,7 @@ def render_comparison(commodity, start_date, end_date, color):
                         hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Disagg {lbl}: %{{y:.1f}}{suffix}<extra></extra>"))
                 fig_ls.update_layout(
                     **_BASE, height=280,
-                    title=dict(text=f"{lbl} positions  ·  {ylabel}", font=dict(size=11,color="#444"), x=0),
+                    title=dict(text=f"{lbl} positions  ·  {ylabel}", font=dict(size=11,color="#0a2463"), x=0),
                     margin=dict(l=50,r=12,t=36,b=68), showlegend=True,
                     legend=dict(orientation="h",y=-0.32,x=0.5,xanchor="center",font_size=10),
                     xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
@@ -3867,7 +3837,7 @@ def render_comparison(commodity, start_date, end_date, color):
             fig_rc.update_layout(
                 **_BASE, height=270,
                 title=dict(text="Rolling 52-week Correlation — CIT vs Disagg",
-                           font=dict(size=11,color="#444"), x=0),
+                           font=dict(size=11,color="#0a2463"), x=0),
                 margin=dict(l=50,r=12,t=36,b=50),
                 xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(),title_text="Correlation",title_font_size=10,range=[-1.1,1.1]))
@@ -4135,7 +4105,7 @@ def render_combined(commodity, start_date, end_date, color):
             f"{COMM_NAMES[commodity]}  ·  Combined Net + Index  ·  k lots",
             [
                 ("Combined Net",        merged["Comb Net"],     color,     "dot",  1.8, False, "y"),
-                ("Combined Net + Index", merged["Comb Net+Idx"], "#f59e0b", "solid",2.4, True,  "y"),
+                ("Combined Net + Index", merged["Comb Net+Idx"], "#c98a1f", "solid",2.4, True,  "y"),
             ])
 
         # 4. Relative Spec: CIT Net minus Disagg Net (bar)
@@ -4218,7 +4188,7 @@ def render_combined(commodity, start_date, end_date, color):
             hovertemplate="<b>%{x|%d %b %Y}</b><br>Δ Combined Net: %{y:+.1f}k<extra></extra>"))
         fig2.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
         fig2.update_layout(**_BASE, height=240,
-            title=dict(text="Combined Net — weekly Δ  ·  k lots",font=dict(size=11,color="#444"),x=0),
+            title=dict(text="Combined Net — weekly Δ  ·  k lots",font=dict(size=11,color="#0a2463"),x=0),
             margin=dict(l=50,r=12,t=36,b=60), showlegend=False,
             xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
             yaxis=dict(**_ax(),title_text="Δ k lots",title_font_size=10))
@@ -4268,7 +4238,7 @@ def render_combined(commodity, start_date, end_date, color):
                 hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>Δ: %{{y:+.1f}}k<extra></extra>"))
             fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
             fig.update_layout(**_BASE, height=280,
-                title=dict(text=f"{title}  ·  k lots",font=dict(size=10,color="#444"),x=0),
+                title=dict(text=f"{title}  ·  k lots",font=dict(size=10,color="#0a2463"),x=0),
                 margin=dict(l=44,r=8,t=36,b=52), showlegend=False,
                 xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(),title_text="Δ k lots",title_font_size=9))
@@ -4414,7 +4384,7 @@ def _render_one_proximity_table(comm, study_weeks, cit_df, dag_df, start_date, e
                 f'border-radius:8px;font-size:.62rem;font-weight:700">{iv}w</span></td>')
 
     # Header — unified dark navy for all commodities
-    _HEAD_BG = "#1e3a8a"
+    _HEAD_BG = "#0a2463"
     ths = [("Date",       "left"),   ("Prev",       "left"),   ("Wks",         "center"),
            ("Px (New)",   "right"),  ("Px (Old)",   "right"),  ("Perf",        "right"),
            ("Spec (New)", "right"),  ("Spec (Old)", "right")]
@@ -4472,14 +4442,14 @@ def _render_dynamic_proximity(comm, df_comm):
         st.markdown(
             f"<div style='display:flex;gap:6px;margin:2px 0 8px'>"
             f"<div style='flex:1;padding:5px 8px;background:#f1f5f9;border-radius:4px'>"
-            f"<div style='font-size:.55rem;color:#94a3b8;letter-spacing:.05em'>LATEST SPEC</div>"
+            f"<div style='font-size:.55rem;color:#8a94a8;letter-spacing:.05em'>LATEST SPEC</div>"
             f"<div style='font-size:.78rem;font-weight:700;color:#0c4a6e'>{latest_spec:+.1f}k</div></div>"
             f"<div style='flex:1;padding:5px 8px;background:#f1f5f9;border-radius:4px'>"
-            f"<div style='font-size:.55rem;color:#94a3b8;letter-spacing:.05em'>LATEST DATE</div>"
+            f"<div style='font-size:.55rem;color:#8a94a8;letter-spacing:.05em'>LATEST DATE</div>"
             f"<div style='font-size:.78rem;font-weight:700;color:#0f172a'>{latest_date.strftime('%d/%m/%y')}</div></div>"
             f"<div style='flex:1;padding:5px 8px;background:#f1f5f9;border-radius:4px'>"
-            f"<div style='font-size:.55rem;color:#94a3b8;letter-spacing:.05em'>LATEST PX</div>"
-            f"<div style='font-size:.78rem;font-weight:700;color:#1e3a8a'>{_px_str}</div></div>"
+            f"<div style='font-size:.55rem;color:#8a94a8;letter-spacing:.05em'>LATEST PX</div>"
+            f"<div style='font-size:.78rem;font-weight:700;color:#0a2463'>{_px_str}</div></div>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -4541,7 +4511,7 @@ def _render_dynamic_proximity(comm, df_comm):
                     f'color:{color_hex};font-weight:{w};text-align:{align};'
                     f'font-variant-numeric:tabular-nums;font-size:.66rem">{fmt.format(v)}</td>')
 
-        _HEAD_BG = "#1e3a8a"
+        _HEAD_BG = "#0a2463"
         ths = [("Date","left"), ("Spec","right"), ("Rollex","right"),
                ("Perf","right"), ("Days","right")]
         head_html = "".join(
@@ -4556,7 +4526,7 @@ def _render_dynamic_proximity(comm, df_comm):
             cells = (
                 _c_date(r["Date"], primary=True),
                 _c_num(r["Spec"], "{:+.1f}", "#0c4a6e", bold=True),
-                _c_num(r["Px"],   "{:.2f}",  "#1e3a8a", bold=is_latest),
+                _c_num(r["Px"],   "{:.2f}",  "#0a2463", bold=is_latest),
                 _c_perf(r["Perf"]),
                 _c_num(r["Days"], "{:.0f}",  "#64748b"),
             )
@@ -4573,7 +4543,7 @@ def _render_dynamic_proximity(comm, df_comm):
         )
         st.markdown(table_html, unsafe_allow_html=True)
         st.markdown(
-            f"<p style='font-size:.62rem;color:#94a3b8;margin-top:4px'>"
+            f"<p style='font-size:.62rem;color:#8a94a8;margin-top:4px'>"
             f"{len(m)} matches within ±{dyn_thresh:.1f}k  ·  "
             f"Perf = % move from that date's Rollex to latest ({_px_str})</p>",
             unsafe_allow_html=True,
@@ -4640,7 +4610,7 @@ with st.sidebar:
 
     commodity = st.selectbox("Commodity", list(COMM_NAMES.keys()),
                              format_func=lambda x: COMM_NAMES[x], key="sb_commodity")
-    color = COMM_COLORS[commodity]
+    color = NAVY   # primary accent; per-commodity hues only for cross-commodity views
     is_combined = commodity in COMBINED_COMMS
 
     if is_combined:
@@ -4760,7 +4730,7 @@ def render_recap_charts(d, report, color, commodity):
     oi   = gc("Total OI").replace(0, np.nan)
 
     def _line(title, series_dict, clrs=None):
-        dflt = [C_LONG, C_SHORT, C_NET, "#f59e0b", "#7c3aed"]
+        dflt = [C_LONG, C_SHORT, C_NET, "#c98a1f", "#7a4fb0"]
         if clrs is None: clrs = dflt
         fig = go.Figure()
         fig.update_layout(
@@ -4950,7 +4920,7 @@ def render_recap_charts(d, report, color, commodity):
             _chart(_line(
                 "MM Net & Swap Net & Other Net k lots",
                 {"MM Net": mm_net / 1000, "Swap Net": swap_net / 1000, "Other Net": gc("Other Net") / 1000},
-                [C_NET, C_LONG, "#f59e0b"]
+                [C_NET, C_LONG, "#c98a1f"]
             ), width='stretch')
 
         with c11:
@@ -4958,14 +4928,14 @@ def render_recap_charts(d, report, color, commodity):
                 "# of Traders",
                 {"MM Long": gc("Traders MM Long"), "MM Short": gc("Traders MM Short"),
                  "Other Long": gc("Traders Other Long"), "Other Short": gc("Traders Other Short")},
-                [C_LONG, C_SHORT, "#f59e0b", "#7c3aed"]
+                [C_LONG, C_SHORT, "#c98a1f", "#7a4fb0"]
             ), width='stretch')
 
         with c12:
             _chart(_line(
                 "Other Spread k lots",
                 {"Other Spread": gc("Other Spread") / 1000},
-                ["#f59e0b"]
+                ["#c98a1f"]
             ), width='stretch')
 
     # ── Roll Yield vs Positioning ──────────────────────────────────────────────
@@ -5101,9 +5071,9 @@ def render_spec_var(commodity: str, df_cot: pd.DataFrame, report: str, color: st
 
     # colour palette for cross-commodity (KC/RC = blue family, CC/LCC = red/orange family)
     _VAR_COLORS = {
-        "KC": "#1d4ed8", "RC": "#38bdf8",
-        "CC": "#b91c1c", "LCC":"#fb923c",
-        "SB": "#059669", "CT": "#7c3aed",
+        "KC": "#0a2463", "RC": "#5b7fd6",
+        "CC": "#c94a4a", "LCC":"#e8770a",
+        "SB": "#1f8a9c", "CT": "#7a4fb0",
     }
     _VAR_DASH = {
         "KC": "solid",   "RC": "dash",
@@ -5473,7 +5443,7 @@ def render_pairs(start_date=None, end_date=None, commodity=None):
             st.info("Select at least one element above.")
             return
 
-        palette = ["#1d4ed8", "#dc2626", "#059669", "#7c3aed", "#d97706"]
+        palette = ["#1d4ed8", "#c94a4a", "#1f8a9c", "#7a4fb0", "#e8770a"]
         fig = go.Figure()
         for i, net in enumerate(sel_nets):
             sa = _col(comm_a, net)
@@ -6096,9 +6066,9 @@ def render_pain_trade(d, commodity, report, color, is_options):
                             continue
                         bold = "font-weight:700;" if is_summary else "font-weight:600;"
                         if col in ("Long Add", "Short Cover"):
-                            cc = "#1a6b1a" if fv > 0 else "#dc2626" if fv < 0 else ""
+                            cc = "#1a6b1a" if fv > 0 else "#c94a4a" if fv < 0 else ""
                         elif col in ("Long Liq", "Short Add"):
-                            cc = "#dc2626" if fv != 0 else ""
+                            cc = "#c94a4a" if fv != 0 else ""
                         else:
                             cc = ""
                         if cc:
@@ -6273,7 +6243,7 @@ _ZBAR_CSS = """<style>
 .zbt .zb{position:absolute;top:0;bottom:0}
 .zbt .zv{position:absolute;top:50%;transform:translateY(-50%);font-size:.74rem;line-height:1;font-variant-numeric:tabular-nums;color:#374151;white-space:nowrap}
 .zbt .zx{font-weight:700}
-.zleg{font-size:.7rem;color:#94a3b8;margin-top:6px}
+.zleg{font-size:.7rem;color:#8a94a8;margin-top:6px}
 </style>"""
 
 def _dist_zbar_cell(v, cap=_ZBAR_CAP, fmt="{:+.2f}", strong_at=2.0, bordered=False):
@@ -6286,7 +6256,7 @@ def _dist_zbar_cell(v, cap=_ZBAR_CAP, fmt="{:+.2f}", strong_at=2.0, bordered=Fal
         return f"{td}<div class='zt'><span class='zv' style='left:50%;transform:translate(-50%,-50%);color:#9ca3af'>—</span></div></td>"
     frac = min(abs(v), cap) / cap * 50          # % of track width, from centre
     pos, strong = v >= 0, abs(v) >= strong_at
-    clr = ("#16a34a" if strong else "#86efac") if pos else ("#dc2626" if strong else "#fca5a5")
+    clr = ("#1f9d6f" if strong else "#86efac") if pos else ("#c94a4a" if strong else "#fca5a5")
     bar = (f"left:50%;width:{frac:.1f}%;border-radius:0 5px 5px 0" if pos else
            f"right:50%;width:{frac:.1f}%;border-radius:5px 0 0 5px")
     lbl = "right:calc(50% + 6px)" if pos else "left:calc(50% + 6px)"
@@ -6422,7 +6392,7 @@ def render_distribution(full, commodity, report):
         st.info("No overlapping weeks between COT dates and Rollex price data.")
         return
     fig_px = go.Figure(go.Histogram(x=chg.values, xbins=dict(size=_dist_auto_bin([chg])),
-                                    marker_color="#f59e0b", marker_line=dict(color="white", width=1),
+                                    marker_color="#c98a1f", marker_line=dict(color="white", width=1),
                                     histnorm=hist_norm, opacity=0.85, showlegend=False))
     fig_px.add_vline(x=chg.iloc[-1], line_color="#1a1a2e", line_width=2)
     fig_px.update_layout(
@@ -6591,8 +6561,8 @@ def _nav_css(accent):
     return f"""<style>
   {sec} [data-testid="stButtonGroup"] {{ gap:0; }}
   {sec} [data-testid="stButtonGroup"] > div {{
-    display:inline-flex; gap:4px; padding:4px; background:#f1f3f7;
-    border:1px solid #e3e7ee; border-radius:999px;
+    display:inline-flex; gap:4px; padding:4px; background:#eef0f6;
+    border:none; border-radius:999px;
   }}
   {sec} button[kind^="segmented_control"] {{
     border:none !important; border-radius:999px !important; margin:0 !important;
@@ -6610,24 +6580,21 @@ def _nav_css(accent):
   }}
   {sec} button[kind="segmented_controlActive"] p {{ color:#ffffff !important; }}
 
-  {vw} {{ margin-top:-.35rem; border-bottom:1px solid #e3e7ee; gap:0; }}
-  {vw} [data-testid="stButtonGroup"] > div {{ gap:2px; flex-wrap:wrap; }}
+  {vw} [data-testid="stButtonGroup"] > div {{
+    display:inline-flex; gap:4px; padding:4px; background:#eef0f6; border:none;
+    border-radius:999px; flex-wrap:wrap;
+  }}
   {vw} button[kind^="segmented_control"] {{
-    border:none !important; border-radius:6px 6px 0 0 !important; margin:0 0 -1px 0 !important;
-    padding:.45rem .9rem !important; min-height:0 !important;
+    border:none !important; border-radius:999px !important; margin:0 !important;
+    padding:.3rem .95rem !important; min-height:0 !important;
     background:transparent !important; box-shadow:none !important;
-    border-bottom:2px solid transparent !important;
-    transition:color .15s ease, border-color .15s ease, background .15s ease;
   }}
   {vw} button[kind^="segmented_control"] p {{
-    font-size:.81rem !important; font-weight:500 !important; color:#6b7280 !important;
+    font-size:.8rem !important; font-weight:600 !important; color:#5a6688 !important;
   }}
-  {vw} button[kind="segmented_control"]:hover {{ background:#f5f6f9 !important; }}
-  {vw} button[kind="segmented_control"]:hover p {{ color:#1f2937 !important; }}
-  {vw} button[kind="segmented_controlActive"] {{
-    border-bottom:2px solid {accent} !important;
-  }}
-  {vw} button[kind="segmented_controlActive"] p {{ color:{accent} !important; font-weight:600 !important; }}
+  {vw} button[kind="segmented_control"]:hover {{ background:#e2e6f0 !important; }}
+  {vw} button[kind="segmented_controlActive"] {{ background:{accent} !important; }}
+  {vw} button[kind="segmented_controlActive"] p {{ color:#ffffff !important; }}
 </style>"""
 
 if NAV_STYLE == "buttons":
