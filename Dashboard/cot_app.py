@@ -1721,8 +1721,6 @@ def render_traders(d, report, color, commodity="KC"):
 
     d = d.sort_values("Date").reset_index(drop=True)
     latest = d.iloc[-1]
-    kpi_row([(c.replace("Traders ", ""), f"{int(latest[c])}", "")
-             for c in all_t[:8] if pd.notna(latest.get(c))], color)
 
     group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp",
                      label_visibility="collapsed")
