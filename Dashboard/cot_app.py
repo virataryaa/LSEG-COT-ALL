@@ -1867,7 +1867,6 @@ def render_traders(d, report, color, commodity="KC"):
             st.markdown(_recap_html(_merge_summary_body(net_summary, net_body), signed=True, scroll=True),
                         unsafe_allow_html=True)
 
-    show_table(d, all_t, sel_cols, "Data table — trader counts", scale=False)
 
 
 
