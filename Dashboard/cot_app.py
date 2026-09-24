@@ -1722,84 +1722,68 @@ def render_traders(d, report, color, commodity="KC"):
     d = d.sort_values("Date").reset_index(drop=True)
     latest = d.iloc[-1]
 
-    group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp",
-                     label_visibility="collapsed")
+    # Control row: group pills on the left, Chart / Table toggle on the right
+    ctl_l, ctl_r = st.columns([4, 1])
+    with ctl_l:
+        group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp",
+                         label_visibility="collapsed")
+    with ctl_r:
+        mode = st.radio("Show", ["Chart", "Table"], horizontal=True, key="traders_mode",
+                        label_visibility="collapsed")
     sel_cols = [c for c in grp_map[group] if c in d.columns and d[c].notna().any()]
     nice     = [c.replace("Traders ", "") for c in sel_cols]
     # side colours: long green, short red, spread/total slate/navy (matches the rest of the app)
-    def _clr(name, i):
+    def _clr(name):
         n = name.lower()
         return C_LONG if "long" in n else C_SHORT if "short" in n else "#8a94a8" if "spread" in n else NAVY
-    clrs = [_clr(n, i) for i, n in enumerate(nice)]
+    clrs = [_clr(n) for n in nice]
 
-    c1, c2 = st.columns(2)
-    with c1:
-        fig = go.Figure()
-        for col, name, clr in zip(sel_cols, nice, clrs):
-            fig.add_trace(go.Scatter(x=d["Date"], y=d[col], name=name, line=dict(color=clr, width=2.2),
-                hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
-        fig.update_layout(
-            **_BASE, height=380,
-            title=dict(text=f"# Traders — {group}", font=dict(size=12, color="#0a2463"), x=0),
-            margin=dict(l=50, r=20, t=42, b=70),
-            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
-            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-            yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
-        _chart(fig, width='stretch')
-    with c2:
-        # average position per trader = category position / category trader count
-        fig2 = go.Figure()
-        for col, name, clr in zip(sel_cols, nice, clrs):
-            pos = col.replace("Traders ", "")
-            if pos in d.columns:
-                lpt = (d[pos] / 1000) / d[col].where(d[col] > 0)
-                fig2.add_trace(go.Scatter(x=d["Date"], y=lpt, name=name, line=dict(color=clr, width=2.2),
-                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.2f}}k<extra></extra>"))
-        fig2.update_layout(
-            **_BASE, height=380,
-            title=dict(text=f"k lots per trader — {group}", font=dict(size=12, color="#0a2463"), x=0),
-            margin=dict(l=50, r=20, t=42, b=70),
-            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
-            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-            yaxis=dict(**_ax(), title_text="k lots / trader", title_font_size=10))
-        _chart(fig2, width='stretch')
-
-    # Long vs short trader count, all categories, latest week (who is crowded on which side)
-    cats = {}
-    for c in all_t:
-        if c in ("Traders Total", "Traders Tot Rept Long", "Traders Tot Rept Short") or pd.isna(latest.get(c)):
-            continue
-        parts = c.replace("Traders ", "").rsplit(" ", 1)
-        if len(parts) == 2:
-            cats.setdefault(parts[0], {})[parts[1]] = float(latest[c])
-    if cats:
-        figb = go.Figure()
-        for side, clr in [("Long", C_LONG), ("Short", C_SHORT), ("Spread", "#8a94a8")]:
-            ys = [cats[k].get(side) for k in cats]
-            if any(v is not None for v in ys):
-                figb.add_trace(go.Bar(x=list(cats), y=ys, name=side, marker_color=clr, opacity=0.9,
-                    hovertemplate=f"%{{x}} {side}: %{{y:.0f}}<extra></extra>"))
-        figb.update_layout(
-            **_BASE, height=300, barmode="group", bargap=0.25,
-            title=dict(text=f"Trader count by category — latest ({pd.Timestamp(latest['Date']):%d %b %Y})",
-                       font=dict(size=12, color="#0a2463"), x=0),
-            margin=dict(l=50, r=20, t=42, b=50),
-            legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font_size=10),
-            xaxis=dict(**_ax()), yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
-        _chart(figb, width='stretch')
-
-    tr_summary, tr_body = _build_traders_df(d, report)
-    if not tr_body.empty:
-        with _exp("# of Traders — table", expanded=True):
-            st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
-                                    signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
-                                    scroll=True), unsafe_allow_html=True)
-    lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
-    if not lpt_body.empty:
-        with _exp("k lots / Trader — table (avg position size per trader)", expanded=False):
-            st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
-                                    signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
-                                    scroll=True), unsafe_allow_html=True)
+    if mode == "Chart":
+        c1, c2 = st.columns(2)
+        with c1:
+            fig = go.Figure()
+            for col, name, clr in zip(sel_cols, nice, clrs):
+                fig.add_trace(go.Scatter(x=d["Date"], y=d[col], name=name, line=dict(color=clr, width=2.2),
+                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
+            fig.update_layout(
+                **_BASE, height=400,
+                title=dict(text=f"# Traders — {group}", font=dict(size=12, color="#0a2463"), x=0),
+                margin=dict(l=50, r=20, t=42, b=70),
+                legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+                yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
+            _chart(fig, width='stretch')
+        with c2:
+            # average position per trader = category position / category trader count
+            fig2 = go.Figure()
+            for col, name, clr in zip(sel_cols, nice, clrs):
+                pos = col.replace("Traders ", "")
+                if pos in d.columns:
+                    lpt = (d[pos] / 1000) / d[col].where(d[col] > 0)
+                    fig2.add_trace(go.Scatter(x=d["Date"], y=lpt, name=name, line=dict(color=clr, width=2.2),
+                        hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.2f}}k<extra></extra>"))
+            fig2.update_layout(
+                **_BASE, height=400,
+                title=dict(text=f"k lots per trader — {group}", font=dict(size=12, color="#0a2463"), x=0),
+                margin=dict(l=50, r=20, t=42, b=70),
+                legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+                yaxis=dict(**_ax(), title_text="k lots / trader", title_font_size=10))
+            _chart(fig2, width='stretch')
+    else:
+        t_cnt, t_lpt = st.tabs(["# of Traders", "k lots / Trader"])
+        with t_cnt:
+            tr_summary, tr_body = _build_traders_df(d, report)
+            if not tr_body.empty:
+                st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
+                                        signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
+                                        scroll=True), unsafe_allow_html=True)
+        with t_lpt:
+            lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
+            if not lpt_body.empty:
+                st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
+                                        signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
+                                        scroll=True), unsafe_allow_html=True)
 
     with _exp("Weekly change — trader counts", expanded=False):
         cols_w = st.columns(min(len(sel_cols), 3))
@@ -1820,6 +1804,7 @@ def render_traders(d, report, color, commodity="KC"):
                 _chart(fb, width='stretch')
 
     show_table(d, all_t, sel_cols, "Data table — trader counts", scale=False)
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
