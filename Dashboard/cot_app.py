@@ -180,8 +180,19 @@ def _add_pct(df):
                 pass
     return df
 
-@st.cache_data(ttl=600)
+def _mtime(path) -> float:
+    try:
+        return Path(path).stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def load_cit() -> pd.DataFrame:
+    return _load_cit(_mtime(CIT_FILE))
+
+
+@st.cache_data(ttl=600)
+def _load_cit(_mt: float) -> pd.DataFrame:
     df = pd.read_parquet(CIT_FILE)
     df["Date"] = pd.to_datetime(df["Date"])
     num = [c for c in df.columns if c not in ("Date","Commodity","Crop")]
@@ -205,8 +216,12 @@ def load_cit() -> pd.DataFrame:
     df = _add_pct(df)
     return df.sort_values(["Commodity","Date"]).reset_index(drop=True)
 
-@st.cache_data(ttl=600)
 def load_disagg(version: str) -> pd.DataFrame:
+    return _load_disagg(version, _mtime(FO_FILE if version == "F&O" else FUT_FILE))
+
+
+@st.cache_data(ttl=600)
+def _load_disagg(version: str, _mt: float) -> pd.DataFrame:
     path = FO_FILE if version == "F&O" else FUT_FILE
     df = pd.read_parquet(path)
     df["Date"] = pd.to_datetime(df["Date"])
@@ -233,8 +248,12 @@ def load_disagg(version: str) -> pd.DataFrame:
     df = _add_pct(df)
     return df.sort_values(["Commodity","Crop","Date"]).reset_index(drop=True)
 
-@st.cache_data(ttl=600)
 def load_options_only() -> pd.DataFrame:
+    return _load_options_only(_mtime(FO_FILE), _mtime(FUT_FILE))
+
+
+@st.cache_data(ttl=600)
+def _load_options_only(_mt_fo: float, _mt_fut: float) -> pd.DataFrame:
     """Options Only = F&O Combined minus Futures Only (numeric cols only)."""
     fo  = pd.read_parquet(FO_FILE)
     fut = pd.read_parquet(FUT_FILE)
@@ -1692,48 +1711,113 @@ DISAGG_TRADER_GROUPS = {
 }
 TRADER_COLORS = [C_LONG, C_SHORT, "#8a94a8", C_NET, C_PRICE]
 
-def render_traders(d, report, color):
-    grp_map = CIT_TRADER_GROUPS if report=="CIT" else DISAGG_TRADER_GROUPS
+def render_traders(d, report, color, commodity="KC"):
+    grp_map = CIT_TRADER_GROUPS if report == "CIT" else DISAGG_TRADER_GROUPS
     all_t   = [c for g in grp_map.values() for c in g if c in d.columns]
+    if d.empty or not all_t or d[all_t].isna().all().all():
+        st.info("No trader counts for this selection. (Counts are not valid for options-only, "
+                "where the futures/options trader overlap makes subtraction meaningless.)")
+        return
 
+    d = d.sort_values("Date").reset_index(drop=True)
     latest = d.iloc[-1]
-    kpi_items = [(c.replace("Traders ",""), f"{int(latest.get(c,0))}", "")
-                 for c in all_t[:8] if pd.notna(latest.get(c))]
-    kpi_row(kpi_items, color)
+    kpi_row([(c.replace("Traders ", ""), f"{int(latest[c])}", "")
+             for c in all_t[:8] if pd.notna(latest.get(c))], color)
 
-    group = st.selectbox("Group", list(grp_map.keys()), key="traders_grp")
-    sel_cols = [c for c in grp_map[group] if c in d.columns]
-    nice     = [c.replace("Traders ","") for c in sel_cols]
+    group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp",
+                     label_visibility="collapsed")
+    sel_cols = [c for c in grp_map[group] if c in d.columns and d[c].notna().any()]
+    nice     = [c.replace("Traders ", "") for c in sel_cols]
+    # side colours: long green, short red, spread/total slate/navy (matches the rest of the app)
+    def _clr(name, i):
+        n = name.lower()
+        return C_LONG if "long" in n else C_SHORT if "short" in n else "#8a94a8" if "spread" in n else NAVY
+    clrs = [_clr(n, i) for i, n in enumerate(nice)]
 
-    fig = go.Figure()
-    for col, name, clr in zip(sel_cols, nice, TRADER_COLORS):
-        fig.add_trace(go.Scatter(x=d["Date"], y=d[col], name=name,
-            line=dict(color=clr,width=2.0),
-            hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
-    fig.update_layout(
-        **_BASE, height=360,
-        title=dict(text=f"Traders in Each Category — {group}",font=dict(size=12,color="#0a2463"),x=0),
-        margin=dict(l=50,r=20,t=42,b=70),
-        legend=dict(orientation="h",y=-0.22,x=0.5,xanchor="center",font_size=10),
-        xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
-        yaxis=dict(**_ax(),title_text="# traders",title_font_size=10))
-    _chart(fig, width='stretch')
+    c1, c2 = st.columns(2)
+    with c1:
+        fig = go.Figure()
+        for col, name, clr in zip(sel_cols, nice, clrs):
+            fig.add_trace(go.Scatter(x=d["Date"], y=d[col], name=name, line=dict(color=clr, width=2.2),
+                hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
+        fig.update_layout(
+            **_BASE, height=380,
+            title=dict(text=f"# Traders — {group}", font=dict(size=12, color="#0a2463"), x=0),
+            margin=dict(l=50, r=20, t=42, b=70),
+            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+            yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
+        _chart(fig, width='stretch')
+    with c2:
+        # average position per trader = category position / category trader count
+        fig2 = go.Figure()
+        for col, name, clr in zip(sel_cols, nice, clrs):
+            pos = col.replace("Traders ", "")
+            if pos in d.columns:
+                lpt = (d[pos] / 1000) / d[col].where(d[col] > 0)
+                fig2.add_trace(go.Scatter(x=d["Date"], y=lpt, name=name, line=dict(color=clr, width=2.2),
+                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.2f}}k<extra></extra>"))
+        fig2.update_layout(
+            **_BASE, height=380,
+            title=dict(text=f"k lots per trader — {group}", font=dict(size=12, color="#0a2463"), x=0),
+            margin=dict(l=50, r=20, t=42, b=70),
+            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+            yaxis=dict(**_ax(), title_text="k lots / trader", title_font_size=10))
+        _chart(fig2, width='stretch')
+
+    # Long vs short trader count, all categories, latest week (who is crowded on which side)
+    cats = {}
+    for c in all_t:
+        if c in ("Traders Total", "Traders Tot Rept Long", "Traders Tot Rept Short") or pd.isna(latest.get(c)):
+            continue
+        parts = c.replace("Traders ", "").rsplit(" ", 1)
+        if len(parts) == 2:
+            cats.setdefault(parts[0], {})[parts[1]] = float(latest[c])
+    if cats:
+        figb = go.Figure()
+        for side, clr in [("Long", C_LONG), ("Short", C_SHORT), ("Spread", "#8a94a8")]:
+            ys = [cats[k].get(side) for k in cats]
+            if any(v is not None for v in ys):
+                figb.add_trace(go.Bar(x=list(cats), y=ys, name=side, marker_color=clr, opacity=0.9,
+                    hovertemplate=f"%{{x}} {side}: %{{y:.0f}}<extra></extra>"))
+        figb.update_layout(
+            **_BASE, height=300, barmode="group", bargap=0.25,
+            title=dict(text=f"Trader count by category — latest ({pd.Timestamp(latest['Date']):%d %b %Y})",
+                       font=dict(size=12, color="#0a2463"), x=0),
+            margin=dict(l=50, r=20, t=42, b=50),
+            legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font_size=10),
+            xaxis=dict(**_ax()), yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
+        _chart(figb, width='stretch')
+
+    tr_summary, tr_body = _build_traders_df(d, report)
+    if not tr_body.empty:
+        with _exp("# of Traders — table", expanded=True):
+            st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
+                                    signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
+    lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
+    if not lpt_body.empty:
+        with _exp("k lots / Trader — table (avg position size per trader)", expanded=False):
+            st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
+                                    signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
 
     with _exp("Weekly change — trader counts", expanded=False):
-        cols_w = st.columns(min(len(sel_cols),3))
-        for i,(col,name) in enumerate(zip(sel_cols,nice)):
-            with cols_w[i%3]:
+        cols_w = st.columns(min(len(sel_cols), 3))
+        for i, (col, name) in enumerate(zip(sel_cols, nice)):
+            with cols_w[i % 3]:
                 chg = d[col].diff().tail(13)
                 dates_b = d["Date"].tail(13)
                 fb = go.Figure(go.Bar(x=dates_b, y=chg,
-                    marker=dict(color=[C_LONG if v>=0 else C_SHORT for v in chg],
-                                opacity=0.82,line=dict(width=0)),
+                    marker=dict(color=[C_LONG if v >= 0 else C_SHORT for v in chg],
+                                opacity=0.82, line=dict(width=0)),
                     hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>Δ: %{{y:+.0f}}<extra></extra>"))
-                fb.add_hline(y=0,line_width=1,line_color="rgba(0,0,0,0.14)")
-                fb.update_layout(**_BASE,height=240,
-                    title=dict(text=f"{name} — Δ",font=dict(size=10,color="#0a2463"),x=0),
-                    margin=dict(l=40,r=8,t=32,b=60),showlegend=False,
-                    xaxis=dict(**_ax(x=True),tickformat="%d %b '%y"),
+                fb.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
+                fb.update_layout(**_BASE, height=240,
+                    title=dict(text=f"{name} — Δ", font=dict(size=10, color="#0a2463"), x=0),
+                    margin=dict(l=40, r=8, t=32, b=60), showlegend=False,
+                    xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
                     yaxis=dict(**_ax()))
                 _chart(fb, width='stretch')
 
@@ -2409,20 +2493,6 @@ def render_recap(d, report, color, commodity="KC", is_options=False):
             )
             st.markdown(_recap_html(_merge_summary_body(nom_summary, nom_body),
                                     signed_rows=set(nom_summary.index), signed_groups={"Δ 1w"},
-                                    scroll=True), unsafe_allow_html=True)
-
-    tr_summary, tr_body = _build_traders_df(d, report)
-    if not tr_body.empty:
-        with _exp("# of Traders", expanded=False):
-            st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
-                                    signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
-                                    scroll=True), unsafe_allow_html=True)
-
-    lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
-    if not lpt_body.empty:
-        with _exp("k lots / Trader  (avg position size per trader)", expanded=False):
-            st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
-                                    signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
                                     scroll=True), unsafe_allow_html=True)
 
     if report == "CIT":
@@ -6527,6 +6597,7 @@ VIEWS = {
     "Recap (Charts)":     lambda: _tab_recap_charts(df, report, color, commodity),
     "Spec":               lambda: _tab_spec(df, report, color),
     "Commercial":         lambda: _tab_commercial(df, report, color),
+    "Traders":            lambda: render_traders(df, report, color, commodity),
     "Concentration":      _view_concentration,
     "Spreading":          _view_spreading,
     "Old / New":          _view_old_new,
@@ -6545,7 +6616,7 @@ VIEWS = {
 NAV_STYLE = "buttons"
 
 VIEW_GROUPS = {
-    "Positioning": ["Recap", "Recap (Charts)", "Spec", "Commercial", "Concentration",
+    "Positioning": ["Recap", "Recap (Charts)", "Spec", "Commercial", "Traders", "Concentration",
                     "Spreading", "Old / New", "CIT vs Disagg"],
     "Analytics":   ["Correlation", "Spec Prediction", "Specs in VaR",
                     "Pain Trade Monitor", "Spec Proximity"],
