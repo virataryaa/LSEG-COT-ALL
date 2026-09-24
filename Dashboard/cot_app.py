@@ -1860,16 +1860,12 @@ def render_traders(d, report, color, commodity="KC"):
                                     signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
                                     scroll=True), unsafe_allow_html=True)
 
-    # 5 -- net (long - short) trader counts, all legs; then the same columns as weekly change
+    # 5 -- net (long - short) trader counts, all legs, with the weekly change in the same table
     net_summary, net_body = _build_net_traders_df(d, report)
     if not net_body.empty:
-        with _exp("Net traders (Long − Short) — all legs", expanded=True):
-            st.markdown(_recap_html(pd.concat([net_summary, net_body]), signed=True, scroll=True),
+        with _exp("Net traders (Long − Short) — all legs, with weekly change", expanded=True):
+            st.markdown(_recap_html(_merge_summary_body(net_summary, net_body), signed=True, scroll=True),
                         unsafe_allow_html=True)
-        net_chg = net_body.diff(-1).dropna(how="all")
-        net_chg.columns = pd.MultiIndex.from_tuples([("Δ 1w Net", c[1]) for c in net_body.columns])
-        with _exp("Net traders — weekly change", expanded=True):
-            st.markdown(_recap_html(net_chg, change_table=True, scroll=True), unsafe_allow_html=True)
 
     show_table(d, all_t, sel_cols, "Data table — trader counts", scale=False)
 
