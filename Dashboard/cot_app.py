@@ -1711,6 +1711,30 @@ DISAGG_TRADER_GROUPS = {
 }
 TRADER_COLORS = [C_LONG, C_SHORT, "#8a94a8", C_NET, C_PRICE]
 
+def _seasonal_series_fig(dates, values, title, ylabel, fmt="%{y:.0f}"):
+    """Week-of-year seasonality for one series, in the app's standard style
+    (teal min-max / 10-90 / 25-75 bands, dotted average, last year red, current navy)."""
+    s = pd.DataFrame({"Date": pd.to_datetime(dates), "v": pd.to_numeric(values, errors="coerce")}).dropna()
+    if s.empty:
+        return go.Figure().update_layout(**_BASE, height=340,
+            title=dict(text=f"{title}  (no data)", font=dict(size=11, color="#999"), x=0))
+    s["Week"] = s["Date"].dt.isocalendar().week.astype(int)
+    s["Year"] = s["Date"].dt.year.astype(int)
+    pivot = s.pivot_table(index="Week", columns="Year", values="v", aggfunc="mean")
+    pivot = pivot[pivot.index <= 52]
+    cur_year = int(s["Year"].max())
+    fig = go.Figure()
+    _seas_bands(fig, pivot, [c for c in pivot.columns if int(c) < cur_year], cur_year, fmt)
+    fig.update_layout(
+        **_BASE, height=340,
+        title=dict(text=title, font=dict(size=12, color="#0a2463"), x=0),
+        margin=dict(l=50, r=20, t=42, b=70),
+        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+        xaxis=dict(**_ax(), tickmode="array", tickvals=list(MONTH_TICKS.keys()), ticktext=list(MONTH_TICKS.values())),
+        yaxis=dict(**_ax(), title_text=ylabel, title_font_size=10))
+    return fig
+
+
 def render_traders(d, report, color, commodity="KC"):
     grp_map = CIT_TRADER_GROUPS if report == "CIT" else DISAGG_TRADER_GROUPS
     all_t   = [c for g in grp_map.values() for c in g if c in d.columns]
@@ -1770,6 +1794,22 @@ def render_traders(d, report, color, commodity="KC"):
                 xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
                 yaxis=dict(**_ax(), title_text="k lots / trader", title_font_size=10))
             _chart(fig2, width='stretch')
+
+        # Seasonality of the same two series, beneath their line charts
+        if sel_cols:
+            pick = st.radio("Seasonal series", nice, horizontal=True, key="traders_seas_pick",
+                            label_visibility="collapsed")
+            pcol = sel_cols[nice.index(pick)] if pick in nice else sel_cols[0]
+            ppos = pcol.replace("Traders ", "")
+            s1, s2 = st.columns(2)
+            with s1:
+                _chart(_seasonal_series_fig(d["Date"], d[pcol], f"# Traders seasonality — {pick}", "# traders"),
+                       width='stretch')
+            with s2:
+                if ppos in d.columns:
+                    lpt_s = (d[ppos] / 1000) / d[pcol].where(d[pcol] > 0)
+                    _chart(_seasonal_series_fig(d["Date"], lpt_s, f"k lots per trader seasonality — {pick}",
+                                                "k lots / trader", "%{y:.2f}"), width='stretch')
     else:
         t_cnt, t_lpt = st.tabs(["# of Traders", "k lots / Trader"])
         with t_cnt:
