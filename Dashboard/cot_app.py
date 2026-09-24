@@ -136,7 +136,6 @@ _BASE = dict(
     plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif",
               color="#1a1a2e", size=11),
-    legend=dict(bgcolor="rgba(0,0,0,0)"),
 )
 
 def _ax(x=False):
