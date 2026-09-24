@@ -4776,10 +4776,12 @@ with st.sidebar:
     # Tiny, deliberately unobtrusive — Historical positions defaults to whole
     # lots; this is the escape hatch for someone who actually wants the tenth.
     st.markdown("""<style>
-      .st-key-hist_decimal_toggle{margin-top:10px}
-      .st-key-hist_decimal_toggle label p{font-size:.66rem!important;color:#9ca3af!important}
+      .st-key-hist_decimal_toggle{margin-top:14px;padding:10px 12px;background:#eef0f6;border-radius:999px}
+      .st-key-hist_decimal_toggle label p{font-size:.82rem!important;font-weight:600!important;color:#0a2463!important}
       .st-key-hist_decimal_toggle [data-testid="stWidgetLabel"]{margin-bottom:0!important}
-      .st-key-hist_decimal_toggle [data-baseweb="checkbox"]{transform:scale(.7);transform-origin:left center}
+      .st-key-hist_decimal_toggle [data-baseweb="checkbox"]{transform:scale(1.05);transform-origin:left center}
+      .st-key-hist_decimal_toggle label[data-baseweb="checkbox"] > div:first-child{background:#c5cbdd!important}
+      .st-key-hist_decimal_toggle label[data-baseweb="checkbox"]:has(input:checked) > div:first-child{background:#0a2463!important}
     </style>""", unsafe_allow_html=True)
     with st.container(key="hist_decimal_toggle"):
         show_hist_decimals = st.toggle("Show 1 decimal (all tables)", value=False, key="hist_decimals")
