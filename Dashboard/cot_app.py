@@ -145,6 +145,8 @@ def _ax(x=False):
              tickfont=dict(size=10, color="#4a5578"))
     if x:
         b.update(showgrid=False, tickangle=-35, nticks=20, hoverformat="%d %b %Y")
+    else:
+        b.update(hoverformat=".1f")
     return b
 
 
@@ -618,7 +620,7 @@ def bars_combined(d, lc, sc, nc, title, color, n=13, price=True):
         ]:
             fig.add_trace(go.Bar(x=dates, y=arr, name=name,
                 marker_color=clr, opacity=0.92,
-                hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>{name}: %{{y:+.2f}}k<extra></extra>"),
+                hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>{name}: %{{y:+.1f}}k<extra></extra>"),
                 secondary_y=False)
 
     if price:
@@ -1757,11 +1759,11 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
     ]
     total = 0
     for name, ser, clr, sgn in series:
-        y = (ser * sgn).iloc[keep]
+        y = (ser * sgn).iloc[keep].round(1)
         total = total + (ser * sgn)
         fig.add_trace(go.Bar(x=dates.iloc[keep], y=y, name=name, marker_color=clr,
             hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:+.1f}}k<extra></extra>"))
-    fig.add_trace(go.Scatter(x=dates.iloc[keep], y=total.iloc[keep], name="Total (net change)", mode="lines+markers",
+    fig.add_trace(go.Scatter(x=dates.iloc[keep], y=total.iloc[keep].round(1), name="Total (net change)", mode="lines+markers",
         line=dict(color=NAVY, width=2.4), marker=dict(size=6, color=NAVY),
         hovertemplate="<b>%{x|%d %b %Y}</b><br>Total: %{y:+.1f}k<extra></extra>"))
     fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.25)")
@@ -1856,7 +1858,7 @@ def render_traders(d, report, color, commodity="KC"):
             if pos in d.columns:
                 lpt = (d[pos] / 1000) / d[col].where(d[col] > 0)
                 fig2.add_trace(go.Scatter(x=d["Date"], y=lpt, name=name, line=dict(color=clr, width=2.2),
-                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.2f}}k<extra></extra>"))
+                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.1f}}k<extra></extra>"))
         fig2.update_layout(
             **_BASE, height=400,
             title=dict(text=f"k lots per trader — {group}", font=dict(size=12, color="#0a2463"), x=0),
@@ -1875,7 +1877,7 @@ def render_traders(d, report, color, commodity="KC"):
         if ppos in d.columns:
             lpt_s = (d[ppos] / 1000) / d[pcol].where(d[pcol] > 0)
             _chart(_seasonal_series_fig(d["Date"], lpt_s, f"k lots per trader seasonality — {pick}",
-                                        "k lots / trader", "%{y:.2f}"), width='stretch')
+                                        "k lots / trader", "%{y:.1f}"), width='stretch')
 
     # 3 -- weekly-change bars (uncollapsed), beneath the seasonality
     cols_w = st.columns(min(len(sel_cols), 3))
@@ -3003,7 +3005,7 @@ def render_analysis(d, report, color, commodity="KC"):
             customdata=cd, name="Actual", marker_color=color, opacity=0.75,
             hovertemplate=(
                 "<b>%{x}</b><br>"
-                "Actual: %{y:+.2f}k<br>"
+                "Actual: %{y:+.1f}k<br>"
                 "Predicted: %{customdata[0]:+.2f}k<br>"
                 "Error: %{customdata[1]:+.2f}k<extra></extra>")))
         fig_avp.add_trace(go.Bar(
@@ -3012,7 +3014,7 @@ def render_analysis(d, report, color, commodity="KC"):
             hovertemplate=(
                 "<b>%{x}</b><br>"
                 "Actual: %{customdata[0]:+.2f}k<br>"
-                "Predicted: %{y:+.2f}k<br>"
+                "Predicted: %{y:+.1f}k<br>"
                 "Error: %{customdata[1]:+.2f}k<extra></extra>")))
         fig_avp.add_trace(go.Scatter(
             x=bar_labels, y=residuals,
@@ -3023,7 +3025,7 @@ def render_analysis(d, report, color, commodity="KC"):
                 "<b>%{x}</b><br>"
                 "Actual: %{customdata[0]:+.2f}k<br>"
                 "Predicted: %{customdata[1]:+.2f}k<br>"
-                "Error: %{y:+.2f}k<extra></extra>")))
+                "Error: %{y:+.1f}k<extra></extra>")))
         fig_avp.update_layout(**_BASE, height=bar_h, barmode="group",
             title=dict(text=f"Actual vs Predicted Δ{sel}  ·  {win_txt}",
                        font=dict(size=11, color="#374151"), x=0),
