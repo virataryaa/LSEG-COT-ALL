@@ -1788,6 +1788,46 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30, smooth=1):
     return fig
 
 
+def _sign_size_drivers_figs(d, long_tcol, short_tcol, group, weeks=30, smooth=1):
+    """The two raw drivers behind the Sign/Size chart, in the same window and with the same
+    smoothing: weekly change in # traders, and weekly change in average lots per trader."""
+    d = d.sort_values("Date").reset_index(drop=True)
+    dates = d["Date"]
+    keep = slice(-weeks, None)
+    dn, ds = {}, {}
+    for name, tcol in (("Long", long_tcol), ("Short", short_tcol)):
+        pcol = tcol.replace("Traders ", "")
+        if pcol not in d.columns:
+            return None
+        n = pd.to_numeric(d[tcol], errors="coerce")
+        avg = pd.to_numeric(d[pcol], errors="coerce") / n.where(n > 0)
+        a, b = n.diff(), avg.diff()
+        if smooth > 1:
+            a, b = a.rolling(smooth).mean(), b.rolling(smooth).mean()
+        dn[name], ds[name] = a.iloc[keep].round(1), b.iloc[keep].round(1)
+    suffix = f" · {smooth}-week average" if smooth > 1 else ""
+    figs = []
+    for data, title, ylab, unit in (
+        (dn, f"Weekly change in # traders · {group}{suffix}", "# traders", ""),
+        (ds, f"Weekly change in average size · {group}{suffix}", "lots / trader", " lots"),
+    ):
+        fig = go.Figure()
+        for name, clr in (("Long", C_LONG), ("Short", C_SHORT)):
+            fig.add_trace(go.Bar(x=dates.iloc[keep], y=data[name], name=name, marker_color=clr, opacity=0.9,
+                hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:+.1f}}{unit}<extra></extra>"))
+        fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.25)")
+        fig.update_layout(
+            **_BASE, height=300, barmode="group", bargap=0.25,
+            title=dict(text=title, font=dict(size=12, color="#0a2463"), x=0),
+            margin=dict(l=50, r=20, t=42, b=80),
+            legend=dict(orientation="h", y=-0.3, x=0.5, xanchor="center", font_size=10),
+            xaxis=dict(**_ax(x=True), tickformat="%d-%b-%y", tickmode="array", tickvals=list(dates.iloc[keep]),
+                       ticktext=[f"{t:%d-%b-%y}" for t in dates.iloc[keep]]),
+            yaxis=dict(**_ax(), title_text=ylab, title_font_size=10))
+        figs.append(fig)
+    return figs
+
+
 def _seasonal_series_fig(dates, values, title, ylabel, fmt="%{y:.0f}"):
     """Week-of-year seasonality for one series, in the app's standard style
     (teal min-max / 10-90 / 25-75 bands, dotted average, last year red, current navy)."""
@@ -1928,6 +1968,14 @@ def render_traders(d, report, color, commodity="KC"):
             _chart(_fss, width='stretch')
             st.caption("Sign = more/fewer traders got involved. Size = the same traders got bigger/smaller (Bennet split: each effect "
                        "valued at the two-week average). Sign + Size = weekly change in each leg; shorts negative, Total = change in net.")
+            # the two raw drivers behind it, same window and smoothing
+            _drv = _sign_size_drivers_figs(d, _lc, _sc, group, smooth=_smooth)
+            if _drv:
+                _dc1, _dc2 = st.columns(2)
+                with _dc1:
+                    _chart(_drv[0], width='stretch')
+                with _dc2:
+                    _chart(_drv[1], width='stretch')
 
     # 4 -- tables, all open by default
     tr_summary, tr_body = _build_traders_df(d, report)
