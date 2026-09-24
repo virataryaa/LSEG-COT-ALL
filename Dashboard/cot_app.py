@@ -1730,14 +1730,16 @@ def _build_net_traders_df(d, report):
     return _summary_and_body(cols, d["Date"])
 
 
-def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
+def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30, smooth=1):
     """Bennet (symmetric) decomposition of the weekly change in each gross leg
     (position = traders x avg size per trader):
         Sign = change in # traders x AVERAGE of last and this week's avg size  (more/fewer people involved)
         Size = change in avg size  x AVERAGE of last and this week's # traders (same people bigger/smaller)
     Each effect is valued at the mid-point of the two weeks, so the traders x size cross-term
     is shared equally and the split does not depend on calculation order.
-    Sign + Size == the weekly change in that leg exactly. Short legs are drawn negated
+    Sign + Size == the weekly change in that leg exactly. smooth > 1 replaces each weekly value
+    with the average of the last `smooth` weeks (Sign, Size and Total each averaged separately,
+    so they still add up). Short legs are drawn negated
     (added shorts go below zero) so Total = change in NET (Long - Short), in k lots."""
     d = d.sort_values("Date").reset_index(drop=True)
     legs = {}
@@ -1750,7 +1752,10 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
         avg = pos / n.where(n > 0)
         sign = n.diff() * (avg + avg.shift(1)) / 2
         size = avg.diff() * (n + n.shift(1)) / 2
-        legs[name] = (sign / 1000, size / 1000)
+        sign, size = sign / 1000, size / 1000
+        if smooth > 1:
+            sign, size = sign.rolling(smooth).mean(), size.rolling(smooth).mean()
+        legs[name] = (sign, size)
     dates = d["Date"]
     keep = slice(-weeks, None)
     fig = go.Figure()
@@ -1772,7 +1777,8 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
     fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.25)")
     fig.update_layout(
         **_BASE, height=430, barmode="relative", bargap=0.25,
-        title=dict(text=f"Weekly change in net position — Sign (# traders) vs Size (avg per trader) · {group} · k lots",
+        title=dict(text=(f"Weekly change in net position — Sign (# traders) vs Size (avg per trader) · {group} · k lots"
+                         + (f" · {smooth}-week average" if smooth > 1 else "")),
                    font=dict(size=12, color="#0a2463"), x=0),
         margin=dict(l=50, r=20, t=46, b=90),
         legend=dict(orientation="h", y=-0.28, x=0.5, xanchor="center", font_size=10),
@@ -1911,7 +1917,13 @@ def render_traders(d, report, color, commodity="KC"):
     _lc = next((c for c in sel_cols if c.endswith(" Long")), None)
     _sc = next((c for c in sel_cols if c.endswith(" Short")), None)
     if _lc and _sc:
-        _fss = _sign_size_fig(d, _lc, _sc, group)
+        _sm_l, _sm_r = st.columns([1, 5])
+        with _sm_l:
+            st.markdown("<div style='font-size:.72rem;color:#5a6688;margin:6px 0 2px'>Smoothing (weeks avg)</div>",
+                        unsafe_allow_html=True)
+            _smooth = st.radio("Smoothing", [1, 4, 8], horizontal=True, key="traders_smooth",
+                               format_func=lambda w: f"{w}w", label_visibility="collapsed")
+        _fss = _sign_size_fig(d, _lc, _sc, group, smooth=_smooth)
         if _fss is not None:
             _chart(_fss, width='stretch')
             st.caption("Sign = more/fewer traders got involved. Size = the same traders got bigger/smaller (Bennet split: each effect "
