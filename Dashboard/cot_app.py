@@ -1728,6 +1728,55 @@ def _build_net_traders_df(d, report):
     return _summary_and_body(cols, d["Date"])
 
 
+def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30):
+    """Decompose the weekly change in each gross leg (position = traders x avg size per trader):
+        Sign = change in # traders   x last week's avg size   (more/fewer people involved)
+        Size = change in avg size    x this week's # traders  (same people get bigger/smaller)
+    Sign + Size == the weekly change in that leg exactly. Short legs are drawn negated
+    (added shorts go below zero) so Total = change in NET (Long - Short), in k lots."""
+    d = d.sort_values("Date").reset_index(drop=True)
+    legs = {}
+    for name, tcol in (("Long", long_tcol), ("Short", short_tcol)):
+        pcol = tcol.replace("Traders ", "")
+        if pcol not in d.columns:
+            return None
+        n = pd.to_numeric(d[tcol], errors="coerce")
+        pos = pd.to_numeric(d[pcol], errors="coerce")
+        avg = pos / n.where(n > 0)
+        sign = n.diff() * avg.shift(1)
+        size = avg.diff() * n
+        legs[name] = (sign / 1000, size / 1000)
+    dates = d["Date"]
+    keep = slice(-weeks, None)
+    fig = go.Figure()
+    series = [
+        ("Long Sign",  legs["Long"][0],  "#1f7a52", 1),
+        ("Long Size",  legs["Long"][1],  "#8fd4b9", 1),
+        ("Short Sign", legs["Short"][0], "#c94a4a", -1),
+        ("Short Size", legs["Short"][1], "#e8a5a5", -1),
+    ]
+    total = 0
+    for name, ser, clr, sgn in series:
+        y = (ser * sgn).iloc[keep]
+        total = total + (ser * sgn)
+        fig.add_trace(go.Bar(x=dates.iloc[keep], y=y, name=name, marker_color=clr,
+            hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:+.1f}}k<extra></extra>"))
+    fig.add_trace(go.Scatter(x=dates.iloc[keep], y=total.iloc[keep], name="Total (net change)", mode="lines+markers",
+        line=dict(color=NAVY, width=2.4), marker=dict(size=6, color=NAVY),
+        hovertemplate="<b>%{x|%d %b %Y}</b><br>Total: %{y:+.1f}k<extra></extra>"))
+    fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.25)")
+    fig.update_layout(
+        **_BASE, height=430, barmode="relative", bargap=0.25,
+        title=dict(text=f"Weekly change in net position — Sign (# traders) vs Size (avg per trader) · {group} · k lots",
+                   font=dict(size=12, color="#0a2463"), x=0),
+        margin=dict(l=50, r=20, t=46, b=90),
+        legend=dict(orientation="h", y=-0.28, x=0.5, xanchor="center", font_size=10),
+        xaxis=dict(**_ax(x=True), tickformat="%d-%b-%y", tickmode="array", tickvals=list(dates.iloc[keep]),
+                   ticktext=[f"{t:%d-%b-%y}" for t in dates.iloc[keep]]),
+        yaxis=dict(**_ax(), title_text="k lots", title_font_size=10))
+    return fig
+
+
 def _seasonal_series_fig(dates, values, title, ylabel, fmt="%{y:.0f}"):
     """Week-of-year seasonality for one series, in the app's standard style
     (teal min-max / 10-90 / 25-75 bands, dotted average, last year red, current navy)."""
@@ -1845,6 +1894,16 @@ def render_traders(d, report, color, commodity="KC"):
                 xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
                 yaxis=dict(**_ax()))
             _chart(fb, width='stretch')
+
+    # 3b -- Sign vs Size decomposition of the weekly change (Long and Short legs; Spread left out)
+    _lc = next((c for c in sel_cols if c.endswith(" Long")), None)
+    _sc = next((c for c in sel_cols if c.endswith(" Short")), None)
+    if _lc and _sc:
+        _fss = _sign_size_fig(d, _lc, _sc, group)
+        if _fss is not None:
+            _chart(_fss, width='stretch')
+            st.caption("Sign = more/fewer traders got involved. Size = the same traders got bigger/smaller. "
+                       "Sign + Size = weekly change in each leg; shorts shown negative, Total = change in net.")
 
     # 4 -- tables, all open by default
     tr_summary, tr_body = _build_traders_df(d, report)
