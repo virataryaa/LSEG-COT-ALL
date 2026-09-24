@@ -12,10 +12,11 @@ no CIT/Index Traders category on the CFTC (or on LSEG — verified live),
 since CIT is the ag-only Commodity Index Supplemental report.
 
 Known, confirmed-by-probe gaps vs. the ICE source (left as NaN, not estimated):
-  - Per-category trader counts (Traders Comm/Spec/Index/Producer/Swap/MM/Other
-    Long/Short/Spread). LSEG only publishes an aggregate "Total Reportable"
-    trader count (TTLNG/TTSHT), which is used to fill "Traders Tot Rept Long/
-    Short" only.
+  - (RESOLVED 2026-09-24) Per-category trader counts are the NO_INVESTR field (TRDVOL_1 for London RICs)
+    ("Number of Investors" in Workspace) on each category RIC — full history
+    from 2010. It is invisible to get_data/GEN_VAL probing and only shows up in
+    the historical-pricing field list, so the earlier "not published" conclusion
+    was wrong. Filled via fetch_trader_counts() below.
   - Concentration (Conc Gross/Net 4/8 Long/Short) — not published by LSEG for
     this report at all.
   - Old/New crop split — LSEG only carries this as a live snapshot field
@@ -154,17 +155,24 @@ DISAGG_FINAL_COLS = (
     + ["Px"]
 )
 
+# US (cftc-kind) RICs carry the count in NO_INVESTR; London (lif-kind: RC/LCC/LSU) RICs carry it
+# in TRDVOL_1 (verified: 3LIFLRCTLNG TRDVOL_1 == the TTLNG total-reportable trader count).
+TRADER_FIELD_BY_KIND = {"cftc": "NO_INVESTR", "lif": "TRDVOL_1"}
+CIT_TRADER_CATS = {
+    "Traders Comm Long": "CLNG", "Traders Comm Short": "CSHT",
+    "Traders Spec Long": "NLNG", "Traders Spec Short": "NSHT", "Traders Spec Spread": "NSPD",
+    "Traders Index Long": "PLNG", "Traders Index Short": "PSHT",
+}
+DISAGG_TRADER_CATS = {
+    "Traders Producer Long": "PLNG", "Traders Producer Short": "PSHT",
+    "Traders Swap Long": "SLNG", "Traders Swap Short": "SSHT", "Traders Swap Spread": "SSPD",
+    "Traders MM Long": "MLNG", "Traders MM Short": "MSHT", "Traders MM Spread": "MSPD",
+    "Traders Other Long": "OLNG", "Traders Other Short": "OSHT", "Traders Other Spread": "OSPD",
+}
+
 # Columns LSEG cannot supply at all — always written as NaN, never estimated.
-CIT_GAP_COLS = [
-    "Traders Comm Long", "Traders Comm Short",
-    "Traders Spec Long", "Traders Spec Short", "Traders Spec Spread",
-    "Traders Index Long", "Traders Index Short",
-]
+CIT_GAP_COLS = []   # trader counts now come from NO_INVESTR
 DISAGG_GAP_COLS = [
-    "Traders Producer Long", "Traders Producer Short",
-    "Traders Swap Long", "Traders Swap Short", "Traders Swap Spread",
-    "Traders MM Long", "Traders MM Short", "Traders MM Spread",
-    "Traders Other Long", "Traders Other Short", "Traders Other Spread",
     "Conc Gross 4 Long", "Conc Gross 4 Short", "Conc Gross 8 Long", "Conc Gross 8 Short",
     "Conc Net 4 Long", "Conc Net 4 Short", "Conc Net 8 Long", "Conc Net 8 Short",
 ]
@@ -248,6 +256,11 @@ def _batch_history(ld, ric_to_col: dict, field: str, start: str, end: str) -> pd
     return pd.concat(frames, axis=1)
 
 
+def fetch_trader_counts(ld, ric_to_col: dict, start: str, end: str, kind: str = "cftc") -> pd.DataFrame:
+    """Trader-count history for the category RICs (empty frame when none resolve)."""
+    return _batch_history(ld, ric_to_col, TRADER_FIELD_BY_KIND[kind], start, end)
+
+
 def fetch_cit_commodity(ld, comm: str, cfg: dict, start: str, end: str) -> pd.DataFrame:
     code = cfg["code"]
     ric_to_col = {f"4{code}{suffix}": col for col, suffix in CIT_CATS.items()}
@@ -261,7 +274,11 @@ def fetch_cit_commodity(ld, comm: str, cfg: dict, start: str, end: str) -> pd.Da
     log.info("  [CIT] %s — Px (%s)", comm, cfg["px"])
     df_px = _batch_history(ld, {cfg["px"]: "Px"}, "TRDPRC_1", start, end)
 
+    df_tr = fetch_trader_counts(ld, {f"4{code}{sfx}": col for col, sfx in CIT_TRADER_CATS.items()}, start, end)
+
     df = df_cat.join(df_oi, how="outer").join(df_px, how="left")
+    if not df_tr.empty:
+        df = df.join(df_tr, how="left")
     for col in CIT_GAP_COLS:
         df[col] = float("nan")
     for col in CIT_POS_FOR_PCT:
@@ -298,7 +315,11 @@ def fetch_disagg_commodity(ld, comm: str, cfg: dict, prefix: str, start: str, en
     log.info("  [Disagg] %s — Px (%s)", comm, cfg["px"])
     df_px = _batch_history(ld, {cfg["px"]: "Px"}, "TRDPRC_1", start, end)
 
+    df_tr = fetch_trader_counts(ld, {f"{root}{sfx}": col for col, sfx in DISAGG_TRADER_CATS.items()}, start, end, kind)
+
     df = df_cat.join(df_extra, how="outer").join(df_px, how="left")
+    if not df_tr.empty:
+        df = df.join(df_tr, how="left")
     for col in DISAGG_GAP_COLS:
         df[col] = float("nan")
     for col in DISAGG_POS_FOR_PCT:
