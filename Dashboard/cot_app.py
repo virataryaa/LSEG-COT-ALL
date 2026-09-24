@@ -1711,6 +1711,23 @@ DISAGG_TRADER_GROUPS = {
 }
 TRADER_COLORS = [C_LONG, C_SHORT, "#8a94a8", C_NET, C_PRICE]
 
+def _build_net_traders_df(d, report):
+    """Net trader count per category = Long count - Short count."""
+    d = d.sort_values("Date", ascending=True).reset_index(drop=True)
+    if d.empty: return pd.DataFrame(), pd.DataFrame()
+    cats = ([("Spec", "Traders Spec Long", "Traders Spec Short"),
+             ("Comm", "Traders Comm Long", "Traders Comm Short"),
+             ("Idx",  "Traders Index Long", "Traders Index Short")] if report == "CIT" else
+            [("MM",    "Traders MM Long", "Traders MM Short"),
+             ("Swap",  "Traders Swap Long", "Traders Swap Short"),
+             ("Other", "Traders Other Long", "Traders Other Short"),
+             ("Prod",  "Traders Producer Long", "Traders Producer Short")])
+    cols = {("Net Traders", n): d[l].astype(float) - d[sh].astype(float)
+            for n, l, sh in cats if l in d.columns and sh in d.columns}
+    if not cols: return pd.DataFrame(), pd.DataFrame()
+    return _summary_and_body(cols, d["Date"])
+
+
 def _seasonal_series_fig(dates, values, title, ylabel, fmt="%{y:.0f}"):
     """Week-of-year seasonality for one series, in the app's standard style
     (teal min-max / 10-90 / 25-75 bands, dotted average, last year red, current navy)."""
@@ -1746,102 +1763,113 @@ def render_traders(d, report, color, commodity="KC"):
     d = d.sort_values("Date").reset_index(drop=True)
     latest = d.iloc[-1]
 
-    # Control row: group pills on the left, Chart / Table toggle on the right
-    ctl_l, ctl_r = st.columns([4, 1])
+    # Control row (all controls at the top): group pills + seasonal-series pills
+    ctl_l, ctl_r = st.columns([1, 1])
     with ctl_l:
         group = st.radio("Group", list(grp_map.keys()), horizontal=True, key="traders_grp",
                          label_visibility="collapsed")
-    with ctl_r:
-        mode = st.radio("Show", ["Chart", "Table"], horizontal=True, key="traders_mode",
-                        label_visibility="collapsed")
     sel_cols = [c for c in grp_map[group] if c in d.columns and d[c].notna().any()]
     nice     = [c.replace("Traders ", "") for c in sel_cols]
+    if not sel_cols:
+        st.info("No trader counts for this group."); return
+    with ctl_r:
+        pick = st.radio("Seasonal series", nice, horizontal=True, key="traders_seas_pick",
+                        label_visibility="collapsed")
+    pcol = sel_cols[nice.index(pick)] if pick in nice else sel_cols[0]
+    ppos = pcol.replace("Traders ", "")
+
     # side colours: long green, short red, spread/total slate/navy (matches the rest of the app)
     def _clr(name):
         n = name.lower()
         return C_LONG if "long" in n else C_SHORT if "short" in n else "#8a94a8" if "spread" in n else NAVY
     clrs = [_clr(n) for n in nice]
 
-    if mode == "Chart":
-        c1, c2 = st.columns(2)
-        with c1:
-            fig = go.Figure()
-            for col, name, clr in zip(sel_cols, nice, clrs):
-                fig.add_trace(go.Scatter(x=d["Date"], y=d[col], name=name, line=dict(color=clr, width=2.2),
-                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
-            fig.update_layout(
-                **_BASE, height=400,
-                title=dict(text=f"# Traders — {group}", font=dict(size=12, color="#0a2463"), x=0),
-                margin=dict(l=50, r=20, t=42, b=70),
-                legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
-                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-                yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
-            _chart(fig, width='stretch')
-        with c2:
-            # average position per trader = category position / category trader count
-            fig2 = go.Figure()
-            for col, name, clr in zip(sel_cols, nice, clrs):
-                pos = col.replace("Traders ", "")
-                if pos in d.columns:
-                    lpt = (d[pos] / 1000) / d[col].where(d[col] > 0)
-                    fig2.add_trace(go.Scatter(x=d["Date"], y=lpt, name=name, line=dict(color=clr, width=2.2),
-                        hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.2f}}k<extra></extra>"))
-            fig2.update_layout(
-                **_BASE, height=400,
-                title=dict(text=f"k lots per trader — {group}", font=dict(size=12, color="#0a2463"), x=0),
-                margin=dict(l=50, r=20, t=42, b=70),
-                legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
-                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-                yaxis=dict(**_ax(), title_text="k lots / trader", title_font_size=10))
-            _chart(fig2, width='stretch')
+    # 1 -- line charts side by side
+    c1, c2 = st.columns(2)
+    with c1:
+        fig = go.Figure()
+        for col, name, clr in zip(sel_cols, nice, clrs):
+            fig.add_trace(go.Scatter(x=d["Date"], y=d[col], name=name, line=dict(color=clr, width=2.2),
+                hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.0f}}<extra></extra>"))
+        fig.update_layout(
+            **_BASE, height=400,
+            title=dict(text=f"# Traders — {group}", font=dict(size=12, color="#0a2463"), x=0),
+            margin=dict(l=50, r=20, t=42, b=70),
+            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+            yaxis=dict(**_ax(), title_text="# traders", title_font_size=10))
+        _chart(fig, width='stretch')
+    with c2:
+        # average position per trader = category position / category trader count
+        fig2 = go.Figure()
+        for col, name, clr in zip(sel_cols, nice, clrs):
+            pos = col.replace("Traders ", "")
+            if pos in d.columns:
+                lpt = (d[pos] / 1000) / d[col].where(d[col] > 0)
+                fig2.add_trace(go.Scatter(x=d["Date"], y=lpt, name=name, line=dict(color=clr, width=2.2),
+                    hovertemplate=f"<b>%{{x|%d %b %Y}}</b><br>{name}: %{{y:.2f}}k<extra></extra>"))
+        fig2.update_layout(
+            **_BASE, height=400,
+            title=dict(text=f"k lots per trader — {group}", font=dict(size=12, color="#0a2463"), x=0),
+            margin=dict(l=50, r=20, t=42, b=70),
+            legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font_size=10),
+            xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+            yaxis=dict(**_ax(), title_text="k lots / trader", title_font_size=10))
+        _chart(fig2, width='stretch')
 
-        # Seasonality of the same two series, beneath their line charts
-        if sel_cols:
-            pick = st.radio("Seasonal series", nice, horizontal=True, key="traders_seas_pick",
-                            label_visibility="collapsed")
-            pcol = sel_cols[nice.index(pick)] if pick in nice else sel_cols[0]
-            ppos = pcol.replace("Traders ", "")
-            s1, s2 = st.columns(2)
-            with s1:
-                _chart(_seasonal_series_fig(d["Date"], d[pcol], f"# Traders seasonality — {pick}", "# traders"),
-                       width='stretch')
-            with s2:
-                if ppos in d.columns:
-                    lpt_s = (d[ppos] / 1000) / d[pcol].where(d[pcol] > 0)
-                    _chart(_seasonal_series_fig(d["Date"], lpt_s, f"k lots per trader seasonality — {pick}",
-                                                "k lots / trader", "%{y:.2f}"), width='stretch')
-    else:
-        t_cnt, t_lpt = st.tabs(["# of Traders", "k lots / Trader"])
-        with t_cnt:
-            tr_summary, tr_body = _build_traders_df(d, report)
-            if not tr_body.empty:
-                st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
-                                        signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
-                                        scroll=True), unsafe_allow_html=True)
-        with t_lpt:
-            lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
-            if not lpt_body.empty:
-                st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
-                                        signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
-                                        scroll=True), unsafe_allow_html=True)
+    # 2 -- seasonality of both, side by side beneath
+    s1, s2 = st.columns(2)
+    with s1:
+        _chart(_seasonal_series_fig(d["Date"], d[pcol], f"# Traders seasonality — {pick}", "# traders"),
+               width='stretch')
+    with s2:
+        if ppos in d.columns:
+            lpt_s = (d[ppos] / 1000) / d[pcol].where(d[pcol] > 0)
+            _chart(_seasonal_series_fig(d["Date"], lpt_s, f"k lots per trader seasonality — {pick}",
+                                        "k lots / trader", "%{y:.2f}"), width='stretch')
 
-    with _exp("Weekly change — trader counts", expanded=False):
-        cols_w = st.columns(min(len(sel_cols), 3))
-        for i, (col, name) in enumerate(zip(sel_cols, nice)):
-            with cols_w[i % 3]:
-                chg = d[col].diff().tail(13)
-                dates_b = d["Date"].tail(13)
-                fb = go.Figure(go.Bar(x=dates_b, y=chg,
-                    marker=dict(color=[C_LONG if v >= 0 else C_SHORT for v in chg],
-                                opacity=0.82, line=dict(width=0)),
-                    hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>Δ: %{{y:+.0f}}<extra></extra>"))
-                fb.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
-                fb.update_layout(**_BASE, height=240,
-                    title=dict(text=f"{name} — Δ", font=dict(size=10, color="#0a2463"), x=0),
-                    margin=dict(l=40, r=8, t=32, b=60), showlegend=False,
-                    xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
-                    yaxis=dict(**_ax()))
-                _chart(fb, width='stretch')
+    # 3 -- weekly-change bars (uncollapsed), beneath the seasonality
+    cols_w = st.columns(min(len(sel_cols), 3))
+    for i, (col, name) in enumerate(zip(sel_cols, nice)):
+        with cols_w[i % 3]:
+            chg = d[col].diff().tail(13)
+            dates_b = d["Date"].tail(13)
+            fb = go.Figure(go.Bar(x=dates_b, y=chg,
+                marker=dict(color=[C_LONG if v >= 0 else C_SHORT for v in chg],
+                            opacity=0.82, line=dict(width=0)),
+                hovertemplate=f"<b>%{{x|%d %b %y}}</b><br>Δ: %{{y:+.0f}}<extra></extra>"))
+            fb.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.14)")
+            fb.update_layout(**_BASE, height=240,
+                title=dict(text=f"{name} — weekly Δ", font=dict(size=10, color="#0a2463"), x=0),
+                margin=dict(l=40, r=8, t=32, b=60), showlegend=False,
+                xaxis=dict(**_ax(x=True), tickformat="%d %b '%y"),
+                yaxis=dict(**_ax()))
+            _chart(fb, width='stretch')
+
+    # 4 -- tables, all open by default
+    tr_summary, tr_body = _build_traders_df(d, report)
+    if not tr_body.empty:
+        with _exp("# of Traders", expanded=True):
+            st.markdown(_recap_html(_merge_summary_body(tr_summary, tr_body),
+                                    signed_rows=set(tr_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
+    lpt_summary, lpt_body = _build_lots_per_trader_df(d, report)
+    if not lpt_body.empty:
+        with _exp("k lots / Trader  (avg position size per trader)", expanded=True):
+            st.markdown(_recap_html(_merge_summary_body(lpt_summary, lpt_body),
+                                    signed_rows=set(lpt_summary.index), signed_groups={"Δ 1w"},
+                                    scroll=True), unsafe_allow_html=True)
+
+    # 5 -- net (long - short) trader counts, all legs; then the same columns as weekly change
+    net_summary, net_body = _build_net_traders_df(d, report)
+    if not net_body.empty:
+        with _exp("Net traders (Long − Short) — all legs", expanded=True):
+            st.markdown(_recap_html(pd.concat([net_summary, net_body]), signed=True, scroll=True),
+                        unsafe_allow_html=True)
+        net_chg = net_body.diff(-1).dropna(how="all")
+        net_chg.columns = pd.MultiIndex.from_tuples([("Δ 1w Net", c[1]) for c in net_body.columns])
+        with _exp("Net traders — weekly change", expanded=True):
+            st.markdown(_recap_html(net_chg, change_table=True, scroll=True), unsafe_allow_html=True)
 
     show_table(d, all_t, sel_cols, "Data table — trader counts", scale=False)
 
@@ -1856,6 +1884,8 @@ def render_traders(d, report, color, commodity="KC"):
 _RECAP_GROUP_BG = {
     "Gross Positions": "#d1d5db",
     "NET":             "#bae6fd",
+    "Net Traders":     "#bae6fd",
+    "Δ 1w Net":        "#f9a8d4",
     "SPREAD":          "#fed7aa",
     "SP":              "#fed7aa",
     "MM+O+NR":         "#a7f3d0",
