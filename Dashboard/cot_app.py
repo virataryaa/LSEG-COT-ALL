@@ -1738,8 +1738,8 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30, smooth=1):
     Each effect is valued at the mid-point of the two weeks, so the traders x size cross-term
     is shared equally and the split does not depend on calculation order.
     Sign + Size == the weekly change in that leg exactly. smooth > 1 replaces each weekly value
-    with the average of the last `smooth` weeks (Sign, Size and Total each averaged separately,
-    so they still add up). Short legs are drawn negated
+    with the rolling SUM of the last `smooth` weeks (Sign, Size and Total each summed separately,
+    so they still add up): "over the last N weeks, net position changed by X". Short legs are drawn negated
     (added shorts go below zero) so Total = change in NET (Long - Short), in k lots."""
     d = d.sort_values("Date").reset_index(drop=True)
     legs = {}
@@ -1754,7 +1754,7 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30, smooth=1):
         size = avg.diff() * (n + n.shift(1)) / 2
         sign, size = sign / 1000, size / 1000
         if smooth > 1:
-            sign, size = sign.rolling(smooth).mean(), size.rolling(smooth).mean()
+            sign, size = sign.rolling(smooth).sum(), size.rolling(smooth).sum()
         legs[name] = (sign, size)
     dates = d["Date"]
     keep = slice(-weeks, None)
@@ -1778,7 +1778,7 @@ def _sign_size_fig(d, long_tcol, short_tcol, group, weeks=30, smooth=1):
     fig.update_layout(
         **_BASE, height=430, barmode="relative", bargap=0.25,
         title=dict(text=(f"Weekly change in net position — Sign (# traders) vs Size (avg per trader) · {group} · k lots"
-                         + (f" · {smooth}-week average" if smooth > 1 else "")),
+                         + (f" · {smooth}-week sum" if smooth > 1 else "")),
                    font=dict(size=12, color="#0a2463"), x=0),
         margin=dict(l=50, r=20, t=46, b=90),
         legend=dict(orientation="h", y=-0.28, x=0.5, xanchor="center", font_size=10),
@@ -1803,9 +1803,9 @@ def _sign_size_drivers_figs(d, long_tcol, short_tcol, group, weeks=30, smooth=1)
         avg = pd.to_numeric(d[pcol], errors="coerce") / n.where(n > 0)
         a, b = n.diff(), avg.diff()
         if smooth > 1:
-            a, b = a.rolling(smooth).mean(), b.rolling(smooth).mean()
+            a, b = a.rolling(smooth).sum(), b.rolling(smooth).sum()
         dn[name], ds[name] = a.iloc[keep].round(1), b.iloc[keep].round(1)
-    suffix = f" · {smooth}-week average" if smooth > 1 else ""
+    suffix = f" · {smooth}-week sum" if smooth > 1 else ""
     figs = []
     for data, title, ylab, unit in (
         (dn, f"Weekly change in # traders · {group}{suffix}", "# traders", ""),
@@ -1941,7 +1941,7 @@ def render_traders(d, report, color, commodity="KC"):
     if _lc and _sc:
         _sm_l, _sm_r = st.columns([1, 5])
         with _sm_l:
-            st.markdown("<div style='font-size:.72rem;color:#5a6688;margin:6px 0 2px'>Smoothing (weeks avg)</div>",
+            st.markdown("<div style='font-size:.72rem;color:#5a6688;margin:6px 0 2px'>Rolling sum (weeks)</div>",
                         unsafe_allow_html=True)
             _smooth = st.radio("Smoothing", [1, 4, 8], horizontal=True, key="traders_smooth",
                                format_func=lambda w: f"{w}w", label_visibility="collapsed")
